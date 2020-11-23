@@ -8,6 +8,33 @@ import os
 import discord
 from discord.ext import commands
 
+class UtilBot(commands.Bot):
+    def __init__(self, *, command_prefix, name):
+        commands.Bot.__init__(
+            self, command_prefix=command_prefix, self_bot=False)
+        with open(r'.\docs\channels.csv') as channels:
+            channel_ids = list(csv.reader(channels, delimiter='\t'))
+            for i, item in enumerate(channel_ids):
+                channel_ids[i] = [int(item[0]), item[1]]
+            self.channels = dict(channel_ids)
+        self.channel_commands = {
+            '#introductions': self.introduction,
+            '#dev-build': self.introduction}
+        self.name = name
+        self.execute_commands()
+
+    async def on_ready(self):
+        print(f"Utils is running")
+
+    def execute_commands(self):
+        @self.event
+        async def on_message(self, message):
+            await print(message)
+
+        @self.command(name="introduction", pass_context=True)
+        async def introduction(self, first, last):
+            pass
+
 class MapBot(commands.Bot):
     def __init__(self, *, command_prefix, name, directory):
         self.client = discord.Client()
@@ -161,4 +188,3 @@ class MapBot(commands.Bot):
                 f"*Name:*\n\t{data['Name']}",
                 f"*Connections:*\n\t{data['Connections']}"]
             await ctx.send('\n'.join(return_text))
-
