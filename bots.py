@@ -188,3 +188,36 @@ class MapBot(commands.Bot):
                 f"*Name:*\n\t{data['Name']}",
                 f"*Connections:*\n\t{data['Connections']}"]
             await ctx.send('\n'.join(return_text))
+
+class Main:
+    def __init__(self):
+        self.map_bots = ('The Skeld', 'Mira HQ', 'Polus')#, 'Airship')
+        self.util_bot = 'Utils'
+        with open(r'.\docs\tokens.csv') as tokenfile:
+            self.tokens = dict(list(csv.reader(tokenfile, delimiter='\t')))
+        self.loop = asyncio.get_event_loop()
+
+        self.start_map_bots()
+        self.start_util_bot()
+
+        self.loop.run_forever()
+
+    def start_map_bots(self):
+        for bot in self.map_bots:
+            discord_bot = MapBot(
+                command_prefix=f"{''.join(bot.split())}.",
+                name=bot,
+                directory=''.join(bot.split()))
+            self.loop.create_task(
+                discord_bot.start(self.tokens[bot]))
+
+    def start_util_bot(self):
+        discord_bot = UtilBot(
+            command_prefix="*",
+            name=self.util_bot)
+        self.loop.create_task(
+            discord_bot.start(
+                self.tokens[self.util_bot]))
+
+if __name__ == '__main__':
+    Main()
