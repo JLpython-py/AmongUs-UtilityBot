@@ -1,0 +1,20 @@
+Name|Type|Room|Steps
+AssembleArtifacts|Short|Laboratory|1
+BuyBeverage|Short|Cafeteria|1
+ChartCourse|Short|Admin|1
+CleanO2Filter|Short|Greenhouse|1
+ClearAsteroids|Long|Balcony|1
+DivertPower|Visual, Long|Reactor*, Admin, Cafeteria, Communications, Greenhouse, Laboratory, Launchpad, MedBay, Office|2
+EmptyGarbage|Short|Cafeteria|1
+EnterIDCode|Common|Admin|1
+FixWiring|Common|Greenhouse, Hallway(C), Hallway(N), Locker Room, Storage|3
+FuelEngine|Long|Launchpad|1
+MeasureWeather|Short|Balcony|1
+PrimeShields|Short|Admin|1
+ProcessData|Short|Office|1
+RunDiagnostics|Short|Launchpad|1
+SortSamples|Short|Laboratory|1
+StartReactor|Long|Reactor|1
+SubmitScan|Visual, Long|MedBay|1
+UnlockManifolds|Short|Reactor|1
+WaterPlants|Long|Storage, Greenhouse|2

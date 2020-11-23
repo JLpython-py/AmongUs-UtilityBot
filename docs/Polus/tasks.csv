@@ -1,0 +1,24 @@
+Name|Type|Room|Steps
+AlignTelescope|Short|Laboratory|1
+ChartCourse|Short|Dropship|1
+ClearAsteroids|Visual, Short|Weapons|1
+EmptyGarbage|Short|O2|1
+FillCanisters|Short|O2|1
+FixWeatherNode|Long|Outside(C, E, NE, NW, S, SW, W), Laboratory|2
+FixWiring|Common|Decontamination, Electrical, Laboratory, Laboratory, O2, Office|3
+FuelEngine|Long|Storage, Outside(NE), Storage, Outside(NW)|4
+InsertKeys|Common|Dropship|1
+InspectSample|Long|Laboratory|1
+MonitorTree|Short|O2|1
+OpenWaterways|Long|Boiler Room, Boiler Room, Outside(S)|3
+RebootWifi|Long|Communications|1
+RecordTemperature|Short|Laboratory, Outside(E)|1
+RepairDrill|Short|Laboratory|1
+ReplaceWaterJug|Long|Boiler Room, Office|2
+ScanBoardingPass|Common|Office|1
+StartReactor|Long|Specimen Room|1
+SortArtifacts|Short|Specimen Room|1
+SubmitScan|Visual, Short|Laboratory|1
+SwipeCard|Common|Office|1
+UnlockManifolds|Short|Specimen Room|1
+UploadData|Short|Electrical, O2, Office, Specimen Room, Weapons, Communications*|2
