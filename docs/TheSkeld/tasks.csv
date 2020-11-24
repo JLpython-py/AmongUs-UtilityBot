@@ -1,19 +1,19 @@
-Name|Type|Room|Steps
-Align Engine Output|Short|Lower Engine, Upper Engine|2
-Calibrate Distributer|Short|Electrical|1
-Chart Course|Short|Navigation|1
-Clean O2 Filter|Short|O2|1
-Clear Asteroids|Visual, Long|Weapons|1
-Divert Power|Visual, Long|Electrical*, Communications, Lower Engine, Navigation, O2, Reactor, Security, Shields, Upper Engine|2
-Empty Chute|Visual, Long|O2, Storage|2
-Empty Garbabe|Visual, Long|Cafeteria, Storage|2
-Fix Wiring|Common|Admin, Cafeteria, Electrical, Navigation, Security, Storage|3
-Fuel Engine|Long|Storage, Lower Engine, Storage, Upper Engine|4
-Inspect Sample|Long|MedBay|1
-Prime Shields|Visual, Short|Shields|1
-Stabilize Steering|Short|Navigation|1
-Start Reactor|Long|Reactor|1
-Submit Scan|Visual, Long|MedBay|1
-Swipe Card|Common|Admin|1
-Unlock Manifolds|Short|Reactor|1
-Upload Data|Short|Cafeteria, Communications, Electrical, Navigation, Weapons, Admin*|2
+Name	Type	Room	Steps
+Align Engine Output	Short	Lower Engine, Upper Engine	2
+Calibrate Distributer	Short	Electrical	1
+Chart Course	Short	Navigation	1
+Clean O2 Filter	Short	O2	1
+Clear Asteroids	Visual, Long	Weapons	1
+Divert Power	Visual, Long	Electrical*, Communications, Lower Engine, Navigation, O2, Reactor, Security, Shields, Upper Engine	2
+Empty Chute	Visual, Long	O2, Storage	2
+Empty Garbabe	Visual, Long	Cafeteria, Storage	2
+Fix Wiring	Common	Admin, Cafeteria, Electrical, Navigation, Security, Storage	3
+Fuel Engine	Long	Storage, Lower Engine, Storage, Upper Engine	4
+Inspect Sample	Long	MedBay	1
+Prime Shields	Visual, Short	Shields	1
+Stabilize Steering	Short	Navigation	1
+Start Reactor	Long	Reactor	1
+Submit Scan	Visual, Long	MedBay	1
+Swipe Card	Common	Admin	1
+Unlock Manifolds	Short	Reactor	1
+Upload Data	Short	Cafeteria, Communications, Electrical, Navigation, Weapons, Admin*	2
