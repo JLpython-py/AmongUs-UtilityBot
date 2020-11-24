@@ -222,7 +222,7 @@ class MapBot(commands.Bot):
         ''' Read csv data for each map
 '''
         with open(self.files[category]) as csvfile:
-            csvreader = csv.reader(csvfile, delimiter='|')
+            csvreader = csv.reader(csvfile, delimiter='\t')
             data = list(csvreader)
             headers = data.pop(0)
         self.data[category] = {}
