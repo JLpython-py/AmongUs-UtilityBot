@@ -14,25 +14,17 @@ class UtilBot(commands.Bot):
     def __init__(self, *, command_prefix, name):
         commands.Bot.__init__(
             self, command_prefix=command_prefix, self_bot=False)
-        self.channels = {}
-        with open(r'.\docs\channels.csv') as channels:
-            channel_ids = list(csv.reader(channels, delimiter='\t'))
-            for i, item in enumerate(channel_ids):
-                channel_ids[i] = [int(item[0]), item[1]]
-            self.channels = dict(channel_ids)
-        self.name = name
         self.execute_commands()
 
     async def on_ready(self):
-        print(f"Utils is running")
+        print("Bot is ready: Utils")
 
     async def on_message(self, message):
         if message.author.bot:
             return
         if message.channel.name == 'introductions':
-            command_regex = re.compile(r'^(\*introduction)\s\w+')
+            command_regex = re.compile(r'(^(\*introduction)\s\w+)|(\*help)')
             results = command_regex.findall(message.content)
-            logging.info(results)
             if not results:
                 await message.delete()
             await self.process_commands(message)
@@ -41,19 +33,29 @@ class UtilBot(commands.Bot):
         elif message.channel.name == 'game-codes':
             code_regex = re.compile(r'^[A-Za-z]{6}$')
             results = code_regex.findall(message.content)
-            logging.info(results)
             if not results:
                 await message.delete()
+        elif message.channel.name == 'bot-commands':
+            command_regex = re.compile(r'^(MiraHQ\.)|(Polus\.)|(TheSkeld\.)')
+            results = command_regex.findall(message.content)
+            if not results:
+                await message.delete()
+        elif message.channel.name == 'dev-build':
+            await self.process_commands(message)
 
     def execute_commands(self):
         @self.command(name="introduction", pass_context=True)
         async def introduction(ctx):
-            ''' Allows user to introduce themselves
-                Message is parsed by a regex to find a valid name
-                Bot will direct message user on the status of their entry
-                Example: *introduction Among Us
+            ''' Use: *introduction Firstname Lastname
+                Channels: #introductions
+                Regex runs through entry to find valid name
+                Notifies user concerning the entry validity
+                If valid,
+                - User is granted Member role
+                - Member information card is sent in #members
+                - Member information is stored locally
 '''
-            if ctx.message.channel.name != 'dev-build':
+            if ctx.message.channel.name != 'introduction':
                 return
             direct_message = await ctx.message.author.create_dm()
             name_regex = re.compile(r'[A-Z][a-z]+ [A-Z][a-z]+')
@@ -91,10 +93,10 @@ class UtilBot(commands.Bot):
                 await direct_message.send(embed=embed)
             return
             channel = discord.utils.get(ctx.guild.channels, name="members")
-            announcement = discord.Embed(
-                title="Member Information Card", color = 0xffff00)
-            announcement.add_field(name="Nickname", value=member)
-            announcement.add_field(name="Name", value=name)
+            embed = discord.Embed(
+                title="Member Information Card", color=0xffff00)
+            embed.add_field(name="Nickname", value=member)
+            embed.add_field(name="Name", value=name)
             with open(r'.\docs\members.csv') as csvfile:
                 data = dict(list(csv.reader(csvfile, delimiter='\t')))
                 data[member] = name
@@ -102,7 +104,24 @@ class UtilBot(commands.Bot):
                 csvwriter = csv.writer(csvfile, delimiter='\t')
                 for (member, name) in list(data.items()):
                     csvwriter.writerow([member, name])
-            await channel.send(embed=announcement)
+            await channel.send(embed=embed)
+
+        @self.command(name="member", pass_context=True)
+        async def member(ctx, *name):
+            if ctx.message.channel.name != 'members':
+                pass
+            name = ' '.join(name).title()
+            logging.info(name)
+            with open(r'.\docs\members.csv') as csvfile:
+                data = dict(list(csv.reader(csvfile, delimiter='\t')))
+            for nickname in data:
+                if data[nickname] == name:
+                    break
+            embed = discord.Embed(
+                title="Member Information Card", color=0xffff00)
+            embed.add_field(name="Nickname", value=nickname)
+            embed.add_field(name="Name", value=name)
+            await ctx.send(embed=embed)
 
 class MapBot(commands.Bot):
     def __init__(self, *, command_prefix, name, directory):
@@ -113,13 +132,15 @@ class MapBot(commands.Bot):
         self.files = {
             'Map': fr'.\docs\{directory}\map.jpg',
             'Rooms': fr'.\docs\{directory}\rooms.csv',
-            #'Sabotages': fr'.\docx\{directory}\sabotages.csv',
+            #'Sabotages': fr'.\docs\{directory}\sabotages.csv',
+            #'Security': fr'.\docs\{directory}\security.csv',
             'Tasks': fr'.\docs\{directory}\tasks.csv',
             'Vents': fr'.\docs\{directory}\vents.csv'}
         self.data = {}
         self.read_map()
         self.read_map_data('Rooms')
         #self.read_map_data('Sabotages')
+        #self.read_map_data('Security')
         self.read_map_data('Tasks')
         self.read_map_data('Vents')
         self.execute_commands()
@@ -263,20 +284,14 @@ class Main:
 
     def start_map_bots(self):
         for bot in self.map_bots:
+            pre = f"{''.join(bot.split())}."
             discord_bot = MapBot(
-                command_prefix=f"{''.join(bot.split())}.",
-                name=bot,
-                directory=''.join(bot.split()))
-            self.loop.create_task(
-                discord_bot.start(self.tokens[bot]))
+                command_prefix=pre, name=bot, directory=''.join(bot.split()))
+            self.loop.create_task(discord_bot.start(self.tokens[bot]))
 
     def start_util_bot(self):
-        discord_bot = UtilBot(
-            command_prefix="*",
-            name=self.util_bot)
-        self.loop.create_task(
-            discord_bot.start(
-                self.tokens[self.util_bot]))
+        discord_bot = UtilBot(command_prefix="*", name=self.util_bot)
+        self.loop.create_task(discord_bot.start(self.tokens[self.util_bot]))
 
 if __name__ == '__main__':
     Main()
