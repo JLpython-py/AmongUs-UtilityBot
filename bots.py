@@ -3,12 +3,13 @@
 
 import asyncio
 import csv
-import os
+import logging
 import re
 
 import discord
 from discord.ext import commands
 
+logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(levelname)s - %(message)s')
 class UtilBot(commands.Bot):
     def __init__(self, *, command_prefix, name):
         commands.Bot.__init__(
@@ -25,6 +26,25 @@ class UtilBot(commands.Bot):
     async def on_ready(self):
         print(f"Utils is running")
 
+    async def on_message(self, message):
+        if message.author.bot:
+            return
+        if message.channel.name == 'introductions':
+            command_regex = re.compile(r'^(\*introduction)\s\w+')
+            results = command_regex.findall(message.content)
+            logging.info(results)
+            if not results:
+                await message.delete()
+            await self.process_commands(message)
+        elif message.channel.name == 'members':
+            await message.delete()
+        elif message.channel.name == 'game-codes':
+            code_regex = re.compile(r'^[A-Za-z]{6}$')
+            results = code_regex.findall(message.content)
+            logging.info(results)
+            if not results:
+                await message.delete()
+
     def execute_commands(self):
         @self.command(name="introduction", pass_context=True)
         async def introduction(ctx):
@@ -33,8 +53,7 @@ class UtilBot(commands.Bot):
                 Bot will direct message user on the status of their entry
                 Example: *introduction Among Us
 '''
-            print(ctx.message)
-            if self.channels[ctx.message.channel.id] != '#introductions-new':
+            if ctx.message.channel.name != 'dev-build':
                 return
             direct_message = await ctx.message.author.create_dm()
             name_regex = re.compile(r'[A-Z][a-z]+ [A-Z][a-z]+')
@@ -43,17 +62,12 @@ class UtilBot(commands.Bot):
                 embed = discord.Embed(
                     title="Invalid Introduction", color=0x00ff00)
                 embed.add_field(
-                    name="Error",
-                    value="Name not detected in entry")
+                    name="Error", value="Name not detected in entry")
                 embed.add_field(
-                    name="Acceptable Format",
-                    value="[A-Z][a-z]+ [A-Z][a-z]+")
+                    name="Acceptable Format", value="[A-Z][a-z]+ [A-Z][a-z]+")
+                embed.add_field(name="Example", value="Among Us")
                 embed.add_field(
-                    name="Example",
-                    value="Among Us")
-                embed.add_field(
-                    name="Not",
-                    value="AmongUs, among us, amongus")
+                    name="Not", value="AmongUs, among us, amongus")
                 await direct_message.send(embed=embed)
                 await ctx.message.delete()
                 return
@@ -64,9 +78,7 @@ class UtilBot(commands.Bot):
                 await member.add_roles(role)
                 embed = discord.Embed(
                     title="Confirm Introduction", color=0x00ff00)
-                embed.add_field(
-                    name="Name set to",
-                    value=name)
+                embed.add_field(name="Name set to", value=name)
                 embed.add_field(
                     name="Role",
                     value="You have now been granted the @Member role")
@@ -77,15 +89,19 @@ class UtilBot(commands.Bot):
                     name="Typo?",
                     value="Run this command again to override the original")
                 await direct_message.send(embed=embed)
+            return
             channel = discord.utils.get(ctx.guild.channels, name="members")
             announcement = discord.Embed(
                 title="Member Information Card", color = 0xffff00)
-            announcement.add_field(
-                name="Nickname",
-                value=member)
-            announcement.add_field(
-                name="Name",
-                value=name)
+            announcement.add_field(name="Nickname", value=member)
+            announcement.add_field(name="Name", value=name)
+            with open(r'.\docs\members.csv') as csvfile:
+                data = dict(list(csv.reader(csvfile, delimiter='\t')))
+                data[member] = name
+            with open(r'.\docx\members.csv', 'w') as csvfile:
+                csvwriter = csv.writer(csvfile, delimiter='\t')
+                for (member, name) in list(data.items()):
+                    csvwriter.writerow([member, name])
             await channel.send(embed=announcement)
 
 class MapBot(commands.Bot):
@@ -111,7 +127,7 @@ class MapBot(commands.Bot):
     def read_map(self):
         ''' Load an image of the map
 '''
-        self.map = discord.File(self.files['Map'])
+        self.map = discord.File(self.files['Map'], filename="map.png")
 
     def read_map_data(self, category):
         ''' Read map CSV info
@@ -124,7 +140,7 @@ class MapBot(commands.Bot):
         for row in data:
             info = dict(zip(headers, row))
             name = info['Name']
-            self.data[category].setdefault(''.join(name.split()), info)
+            self.data[category].setdefault(name, info)
 
     async def on_ready(self):
         ''' Notification that the bot is ready
@@ -134,63 +150,58 @@ class MapBot(commands.Bot):
     def execute_commands(self):
         ''' Bot commands for server members to use
 '''
-        @self.command(name="options", pass_context=True)
-        async def options(ctx):
-            ''' Return a list available bot command options
-'''
-            print(f'{ctx}: Options')
-            await ctx.send('\n'.join(OPTIONS))
-
         @self.command(name="map", pass_context=True)
         async def map(ctx):
             ''' Return an image of the map
 '''
-            print(f'{ctx}: Map')
-            await ctx.send(file=self.map)
+            embed = discord.Embed(title="Map", color=0x0000ff)
+            embed.set_image(
+                url="attachment://map.png")
+            await ctx.send(file=self.map, embed=embed)
 
         @self.command(name="tasks", pass_context=True)
-        async def tasks(ctx):
+        async def all_tasks(ctx):
             ''' Return a list of all the tasks on the map
 '''
-            print(f'{ctx}: Tasks')
-            await ctx.send('\n'.join(self.data['Tasks']))
+            embed = discord.Embed(title="Tasks", color=0x0000ff)
+            for i, task in enumerate(self.data['Tasks'], 1):
+                embed.add_field(name=i, value=task)
+            await ctx.send(embed=embed)
 
         @self.command(name="task", pass_context=True)
-        async def task(ctx, *task):
+        async def task(ctx, *name):
             ''' Return information about a specific task
                 - Name of task
                 - Type of task
                 - Rooms in which the task can be completed
                 - Number of steps to complete the task
 '''
-            task = ''.join(task)
-            print(f'{ctx}: Task[{task}]')
-            tasks = self.data['Tasks']
             data = None
-            for t in tasks:
-                if t.lower() == task.lower():
-                    data = tasks[t]
+            for task in self.data['Tasks']:
+                if ''.join(name).lower() == ''.join(task.split()).lower():
+                    data = self.data['Tasks'][task]
+                    break
             if data is None:
-                await ctx.send('Nonexistent Task')
+                await ctx.send(f"{name} cannot be found")
                 return
-            return_text = [
-                f"*Name:*\n\t{data['Name']}",
-                f"*Type:*\n\t{data['Type']}",
-                f"*Rooms:*\n\t{data['Room']}",
-                f"*Number of steps:*\n\t{data['Steps']}"]
-            if '*' in data['Room']:
-                return_text.append('* deontes a required room')
-            await ctx.send('\n'.join(return_text))
+            data = self.data['Tasks'][task]
+            embed = discord.Embed(title=f"Task: {task}", color=0x0000ff)
+            for aspect in data:
+                embed.add_field(name=aspect, value=data[aspect])
+            embed.set_footer(text="* denotes a required room")
+            await ctx.send(embed=embed)
 
         @self.command(name="rooms", pass_context=True)
         async def rooms(ctx):
             ''' Returns a list of all the rooms on the map
 '''
-            print(f'{ctx}: Rooms')
-            await ctx.send('\n'.join(self.data['Rooms']))
+            embed = discord.Embed(title="Rooms", color = 0x0000ff)
+            for i, room in enumerate(self.data["Rooms"], 1):
+                embed.add_field(name=i, value=room)
+            await ctx.send(embed=embed)
 
         @self.command(name="room", pass_context=True)
-        async def room(ctx, *room):
+        async def room(ctx, *name):
             ''' Return information about a specific room
                 - Name of room
                 - Direct connections to other rooms
@@ -198,49 +209,44 @@ class MapBot(commands.Bot):
                 - Tasks which can be completed in the room
                 - Actions which can be done in the room
 '''
-            room = ''.join(room)
-            print(f'{ctx}: Room[{room}]')
-            rooms = self.data['Rooms']
             data = None
-            for r in rooms:
-                if r.lower() == room.lower():
-                    data = rooms[r]
+            for room in self.data['Rooms']:
+                if ''.join(name).lower() == ''.join(room.split()).lower():
+                    data = self.data['Rooms'][room]
+                    break
             if data is None:
-                await ctx.send('Nonexistent Room')
+                await ctx.send(f"{name} cannot be found")
                 return
-            return_text = [
-                f"*Name:*\n\t{data['Name']}",
-                f"*Connections:*\n\t{data['Connections']}",
-                f"*Vent Connections:*\n\t{data['Vents']}",
-                f"*Tasks:*\n\t{data['Tasks']}",
-                f"*Actions:*\n\t{data['Actions']}"]
-            await ctx.send('\n'.join(return_text))
+            embed = discord.Embed(title=f"Room: {room}", color = 0x0000ff)
+            for aspect in data:
+                embed.add_field(name=aspect, value=data[aspect])
+            await ctx.send(embed=embed)
 
         @self.command(name="vents", pass_context=True)
         async def vents(ctx):
             ''' Returns a list of all the vents on the map
 '''
-            print(f'{ctx}: Vents')
-            await ctx.send('\n'.join(self.data['Vents']))
+            embed = discord.Embed(title="Vents", color=0x0000ff)
+            for i, vent in enumerate(self.data["Vents"], 1):
+                embed.add_field(name=i, value=vent)
+            await ctx.send(embed=embed)
 
         @self.command(name="vent", pass_context=True)
-        async def vent(ctx, *vent):
+        async def vent(ctx, *name):
             ''' Return information about a specific vent
 '''
-            vent = ''.join(vent)
-            print(f'{ctx}: Vent[{vent}]')
-            vents = self.data['Vents']
             data = None
-            for v in vents:
-                if v.lower() == vent.lower():
-                    data = vents[v]
+            for vent in self.data['Vents']:
+                if ''.join(name).lower() == ''.join(vent.split()).lower():
+                    data = self.data['Vents'][vent]
+                    break
             if data is None:
-                await ctx.send('Nonexistent Vent')
+                await ctx.send(f"{name} cannot be found")
                 return
-            return_text = [
-                f"*Name:*\n\t{data['Name']}",
-                f"*Connections:*\n\t{data['Connections']}"]
-            await ctx.send('\n'.join(return_text))
+            embed = discord.Embed(title=f"Vent: {vent}", color = 0x0000ff)
+            for aspect in data:
+                embed.add_field(name=aspect, value=data[aspect])
+            await ctx.send(embed=embed)
 
 class Main:
     def __init__(self):
