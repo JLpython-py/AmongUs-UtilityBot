@@ -4,6 +4,7 @@
 import asyncio
 import csv
 import os
+import re
 
 import discord
 from discord.ext import commands
@@ -12,14 +13,12 @@ class UtilBot(commands.Bot):
     def __init__(self, *, command_prefix, name):
         commands.Bot.__init__(
             self, command_prefix=command_prefix, self_bot=False)
+        self.channels = {}
         with open(r'.\docs\channels.csv') as channels:
             channel_ids = list(csv.reader(channels, delimiter='\t'))
             for i, item in enumerate(channel_ids):
                 channel_ids[i] = [int(item[0]), item[1]]
             self.channels = dict(channel_ids)
-        self.channel_commands = {
-            '#introductions': self.introduction,
-            '#dev-build': self.introduction}
         self.name = name
         self.execute_commands()
 
@@ -27,13 +26,67 @@ class UtilBot(commands.Bot):
         print(f"Utils is running")
 
     def execute_commands(self):
-        @self.event
-        async def on_message(self, message):
-            await print(message)
-
         @self.command(name="introduction", pass_context=True)
-        async def introduction(self, first, last):
-            pass
+        async def introduction(ctx):
+            ''' Allows user to introduce themselves
+                Message is parsed by a regex to find a valid name
+                Bot will direct message user on the status of their entry
+                Example: *introduction Among Us
+'''
+            print(ctx.message)
+            if self.channels[ctx.message.channel.id] != '#introductions-new':
+                return
+            direct_message = await ctx.message.author.create_dm()
+            name_regex = re.compile(r'[A-Z][a-z]+ [A-Z][a-z]+')
+            results = name_regex.search(ctx.message.content)
+            if results is None:
+                embed = discord.Embed(
+                    title="Invalid Introduction", color=0x00ff00)
+                embed.add_field(
+                    name="Error",
+                    value="Name not detected in entry")
+                embed.add_field(
+                    name="Acceptable Format",
+                    value="[A-Z][a-z]+ [A-Z][a-z]+")
+                embed.add_field(
+                    name="Example",
+                    value="Among Us")
+                embed.add_field(
+                    name="Not",
+                    value="AmongUs, among us, amongus")
+                await direct_message.send(embed=embed)
+                await ctx.message.delete()
+                return
+            else:
+                name = results.group()
+                member = ctx.message.author
+                role = discord.utils.get(member.guild.roles, name="Member")
+                await member.add_roles(role)
+                embed = discord.Embed(
+                    title="Confirm Introduction", color=0x00ff00)
+                embed.add_field(
+                    name="Name set to",
+                    value=name)
+                embed.add_field(
+                    name="Role",
+                    value="You have now been granted the @Member role")
+                embed.add_field(
+                    name="Status",
+                    value="You can now view the rest of the Among Us server")
+                embed.add_field(
+                    name="Typo?",
+                    value="Run this command again to override the original")
+                await direct_message.send(embed=embed)
+            channel = discord.utils.get(ctx.guild.channels, name="members")
+            announcement = discord.Embed(
+                title="Member Information Card", color = 0xffff00)
+            announcement.add_field(
+                name="Nickname",
+                value=member)
+            announcement.add_field(
+                name="Name",
+                value=name)
+            await channel.send(embed=announcement)
 
 class MapBot(commands.Bot):
     def __init__(self, *, command_prefix, name, directory):
