@@ -3,6 +3,7 @@
 
 import asyncio
 import csv
+import json
 import logging
 import os
 import re
@@ -120,13 +121,11 @@ class UtilBot(commands.Bot):
                 #Add 'Member' role to member
                 await member.add_roles(role)
             #Write information to members.csv to be referenced
-            with open(r'.\docs\members.csv') as csvfile:
-                data = dict(list(csv.reader(csvfile, delimiter='\t')))
+            with open('members.txt') as jsonfile:
+                data = json.load(jsonfile)
                 data[member] = name
-            with open(r'.\docs\members.csv', 'w') as csvfile:
-                csvwriter = csv.writer(csvfile, delimiter='\t')
-                for (member, name) in list(data.items()):
-                    csvwriter.writerow([member, name])
+            with open('members.txt', 'w') as outfile:
+                json.dump(data, outfile)
             #Create and send new member information embed to #members channel
             embed = discord.Embed(
                 title="Member Information Card", color=0xffff00)
@@ -147,8 +146,8 @@ class UtilBot(commands.Bot):
                 return
             nickname = ''.join(nickname)
             #Convert data to nickname:name dictionary
-            with open(r'.\docs\members.csv') as csvfile:
-                data = dict(list(csv.reader(csvfile, delimiter='\t')))
+            with open('members.txt') as jsonfle:
+                data = json.load(jsonfile)
             #Assert that nickname is on file
             if nickname not in data:
                 await ctx.message.delete()
@@ -173,9 +172,8 @@ class UtilBot(commands.Bot):
                 return
             name = ' '.join(name).title()
             #Convert data to name:nickname dictionary
-            with open(r'.\docs\members.csv') as csvfile:
-                data = {v:k for k, v in dict(
-                    list(csv.reader(csvfile, delimiter='\t'))).items()}
+            with open('members.txt') as jsonfile:
+                data = {v:k for k, v in json.load(jsonfile).items()}
             #Assert that name is on file
             if name not in data:
                 await ctx.message.delete()
@@ -395,8 +393,8 @@ class Main:
         #Gather general data for each bot
         self.map_bots = ('The Skeld', 'Mira HQ', 'Polus')#, 'Airship')
         self.util_bots = ('Utils',)
-        with open(r'.\docs\tokens.csv') as tokenfile:
-            self.tokens = dict(list(csv.reader(tokenfile, delimiter='\t')))
+        with open('tokens.txt') as jsonfile:
+            self.tokens = json.load(jsonfile)
 
         self.loop = asyncio.get_event_loop()
         #Create a MapBot-class bot for each Among Us map
