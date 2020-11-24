@@ -4,6 +4,7 @@
 import asyncio
 import csv
 import logging
+import os
 import re
 
 import discord
@@ -200,29 +201,31 @@ class MapBot(commands.Bot):
         self.files = {
             'Map': fr'.\docs\{directory}\map.jpg',
             'Rooms': fr'.\docs\{directory}\rooms.csv',
-            #'Sabotages': fr'.\docs\{directory}\sabotages.csv',
+            'Actions': fr'.\docs\{directory}\actions.csv',
             #'Security': fr'.\docs\{directory}\security.csv',
             'Tasks': fr'.\docs\{directory}\tasks.csv',
             'Vents': fr'.\docs\{directory}\vents.csv'}
         self.data = {}
-        self.read_map()
-        self.read_map_data('Rooms')
-        #self.read_map_data('Sabotages')
-        #self.read_map_data('Security')
-        self.read_map_data('Tasks')
-        self.read_map_data('Vents')
+        self.read_image('Map')
+        self.read_csv('Rooms')
+        self.read_csv('Actions')
+        #self.read_csv('Security')
+        self.read_csv('Tasks')
+        self.read_csv('Vents')
         self.execute_commands()
 
-    def read_map(self):
+    def read_image(self, category):
         ''' Load an image of the map
 '''
-        self.map = discord.File(self.files['Map'], filename="map.jpg")
+        file = self.files[category]
+        filename = os.path.split(file)[-1]
+        self.data[category] = discord.File(file, filename)
 
-    def read_map_data(self, category):
+    def read_csv(self, category):
         ''' Read csv data for each map
 '''
         with open(self.files[category]) as csvfile:
-            csvreader = csv.reader(csvfile, delimiter='|')
+            csvreader = csv.reader(csvfile, delimiter='\t')
             data = list(csvreader)
             headers = data.pop(0)
         self.data[category] = {}
@@ -246,9 +249,9 @@ class MapBot(commands.Bot):
                 - High-detail image of corresponding map
 '''
             embed = discord.Embed(title="Map", color=0x0000ff)
-            embed.set_image(
-                url="attachment://map.jpg")
-            await ctx.send(file=self.map, embed=embed)
+            embed.set_image(url="attachment://map.jpg")
+            file = self.data['Map']
+            await ctx.send(file=file, embed=embed)
 
         @self.command(name="tasks", pass_context=True)
         async def tasks(ctx):
@@ -277,6 +280,7 @@ class MapBot(commands.Bot):
                     break
             if data is None:
                 await ctx.send(f"{name} cannot be found")
+                await ctx.message.delete()
                 return
             data = self.data['Tasks'][task]
             embed = discord.Embed(title=f"Task: {task}", color=0x0000ff)
@@ -313,6 +317,7 @@ class MapBot(commands.Bot):
                     break
             if data is None:
                 await ctx.send(f"{name} cannot be found")
+                await ctx.message.delete()
                 return
             embed = discord.Embed(title=f"Room: {room}", color = 0x0000ff)
             for aspect in data:
@@ -344,8 +349,41 @@ class MapBot(commands.Bot):
                     break
             if data is None:
                 await ctx.send(f"{name} cannot be found")
+                await ctx.message.delete()
                 return
-            embed = discord.Embed(title=f"Vent: {vent}", color = 0x0000ff)
+            embed = discord.Embed(title=f"Vent: {vent}", color=0x0000ff)
+            for aspect in data:
+                embed.add_field(name=aspect, value=data[aspect])
+            await ctx.send(embed=embed)
+
+        @self.command(name="actions", pass_context=True)
+        async def actions(ctx):
+            ''' Command: MapBot.actions
+                Return Embed Values:
+                - List of all actions which can be done on the map
+'''
+            embed = discord.Embed(title="Actions", color=0x0000ff)
+            for i, action in enumerate(self.data["Actions"], 1):
+                embed.add_field(name=i, value=action)
+            await ctx.send(embed=embed)
+
+        @self.command(name="action", pass_context=True)
+        async def action(ctx, *name):
+            ''' Command: MapBot.action Action Name
+                Return Embed Values:
+                - Name of action
+                - Type of action
+'''
+            data = None
+            for action in self.data['Actions']:
+                if ''.join(name).lower() == ''.join(action.split()).lower():
+                    data = self.data['Actions'][action]
+                    break
+            if data is None:
+                await ctx.send(f"{name} cannot be found")
+                await ctx.message.delete()
+                return
+            embed = discord.Embed(title=f"Action: {action}", color=0x0000ff)
             for aspect in data:
                 embed.add_field(name=aspect, value=data[aspect])
             await ctx.send(embed=embed)

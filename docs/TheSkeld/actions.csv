@@ -1,0 +1,8 @@
+Name	Type	Rooms	Severity
+Check Admin Table	Monitor	Admin	None
+Check Security Cameras	Monitor	Security	None
+Fix Communications Sabotage	Fix Sabotage	Communications	Major
+Fix Lights	Fix Sabotage	Electrical	Major
+Fix O2 Sabotage	Fix Sabotage	Fix Sabotage	Admin, O2	Fatal
+Fix Reactor Meltdown	Fix Sabotage	Reactor(N), Reactor(S)	Fatal
+Open Doors	Fix Sabotage	Cafeteria, Electrical, Lower Engine, MedBay, O2, Security, Storage, Upper Engine 	Minor
