@@ -4,7 +4,7 @@ Calibrate Distributer	Short	Electrical	1
 Chart Course	Short	Navigation	1
 Clean O2 Filter	Short	O2	1
 Clear Asteroids	Visual, Long	Weapons	1
-Divert Power	Visual, Long	Electrical*, Communications, Lower Engine, Navigation, O2, Reactor, Security, Shields, Upper Engine	2
+Divert Power	Long	Electrical*, Communications, Lower Engine, Navigation, O2, Reactor, Security, Shields, Upper Engine	2
 Empty Chute	Visual, Long	O2, Storage	2
 Empty Garbabe	Visual, Long	Cafeteria, Storage	2
 Fix Wiring	Common	Admin, Cafeteria, Electrical, Navigation, Security, Storage	3

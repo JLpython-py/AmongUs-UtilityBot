@@ -268,6 +268,25 @@ class MapBot(commands.Bot):
                 embed.add_field(name=i, value=task)
             await ctx.send(embed=embed)
 
+        @self.command(name="task_type", pass_context=True)
+        async def task_type(ctx, type_name):
+            ''' Command: MapBot.task_type Type
+                Return Embed Values:
+                - List of all tasks which are classified as such
+'''
+            tasks = []
+            for task in self.data['Tasks']:
+                if type_name.title() in self.data['Tasks'][task]['Type']:
+                    tasks.append(task)
+            if not tasks:
+                await ctx.send(f"{type_name} cannot be found")
+                await ctx.message.delete()
+                return
+            embed = discord.Embed(title=f"Task: {type_name}", color=0x0000ff)
+            for i, task in enumerate(tasks, 1):
+                embed.add_field(name=i, value=task)
+            await ctx.send(embed=embed)
+
         @self.command(name="task", pass_context=True)
         async def task(ctx, *name):
             ''' Command: MapBot.task Task Name
