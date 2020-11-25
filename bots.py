@@ -12,6 +12,7 @@ import discord
 from discord.ext import commands
 
 logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(levelname)s - %(message)s')
+
 class UtilBot(commands.Bot):
     def __init__(self, *, command_prefix, name):
         '''
@@ -31,8 +32,12 @@ class UtilBot(commands.Bot):
             Messages that do not comply to the regex are considered spam
             Spam messages are deleted
 '''
+        logging.info((message.author.name, message.channel, message.content))
         #Ignore all bot messages
         if message.author.bot:
+            return
+        if 'Direct Message' in str(message.channel):
+            await message.channel.send("Direct Messaging is not supported")
             return
         ##introductions - Only allow *introduction, *help commands
         if message.channel.name == 'introductions':
@@ -61,7 +66,7 @@ class UtilBot(commands.Bot):
             if not results:
                 await message.delete()
         ##dev-guild - Allow all messages and commands
-        else:
+        elif message.channel.name == 'dev-build':
             await self.process_commands(message)
 
     def execute_commands(self):
@@ -76,6 +81,7 @@ class UtilBot(commands.Bot):
                 Other Return Values:
                 - User is granted Member role
                 - Information is stored for other Members to reference
+                Restrictions: #introductions
 '''
             #Ignore commands outside #introductions
             if ctx.message.channel.name != 'introductions':
@@ -97,7 +103,7 @@ class UtilBot(commands.Bot):
                 embed.add_field(
                     name="Not", value="AmongUs, among us, amongus")
                 await direct_message.send(embed=embed)
-                #Delete failed message
+                #Delete invalid command
                 await ctx.message.delete()
                 return
             else:
@@ -123,13 +129,13 @@ class UtilBot(commands.Bot):
             #Write information to members.csv to be referenced
             with open('members.txt') as jsonfile:
                 data = json.load(jsonfile)
-                data[member] = name
+                data[member.name] = name
             with open('members.txt', 'w') as outfile:
                 json.dump(data, outfile)
             #Create and send new member information embed to #members channel
             embed = discord.Embed(
                 title="Member Information Card", color=0xffff00)
-            embed.add_field(name="Nickname", value=member)
+            embed.add_field(name="Nickname", value=member.name)
             embed.add_field(name="Name", value=name)
             channel = discord.utils.get(ctx.guild.channels, name="members")
             await channel.send(embed=embed)
@@ -140,13 +146,14 @@ class UtilBot(commands.Bot):
                 Return Embed Values:
                 - Member nickname
                 - Member name
+                Restridctions: #members
 '''
             #Ignore commands outside #members
             if ctx.message.channel.name != 'members':
                 return
-            nickname = ''.join(nickname)
+            nickname = ' '.join(nickname)
             #Convert data to nickname:name dictionary
-            with open('members.txt') as jsonfle:
+            with open('members.txt') as jsonfile:
                 data = json.load(jsonfile)
             #Assert that nickname is on file
             if nickname not in data:
@@ -166,6 +173,7 @@ class UtilBot(commands.Bot):
                 Return Embed Values:
                 - Member nickname
                 - Member name
+                Restrictions: #members
 '''
             #Ignore commands outside #members
             if ctx.message.channel.name != 'members':
@@ -197,17 +205,15 @@ class MapBot(commands.Bot):
             self, command_prefix=command_prefix, self_bot=False)
         self.name = name
         self.files = {
+            'Actions': fr'.\docs\{directory}\actions.csv',
             'Map': fr'.\docs\{directory}\map.jpg',
             'Rooms': fr'.\docs\{directory}\rooms.csv',
-            'Actions': fr'.\docs\{directory}\actions.csv',
-            #'Security': fr'.\docs\{directory}\security.csv',
             'Tasks': fr'.\docs\{directory}\tasks.csv',
             'Vents': fr'.\docs\{directory}\vents.csv'}
         self.data = {}
         self.read_image('Map')
-        self.read_csv('Rooms')
         self.read_csv('Actions')
-        #self.read_csv('Security')
+        self.read_csv('Rooms')
         self.read_csv('Tasks')
         self.read_csv('Vents')
         self.execute_commands()
