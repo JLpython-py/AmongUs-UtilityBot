@@ -1,5 +1,5 @@
 Name	Connections	Vents	Tasks	Actions
-Admin	Cafeteria,Storage	Cafeteria,Hallway(SE)	Upload Data(2/2), Fix Wiring, Swipe Card	View Admin Map, Fix O2 Depletion(1/2)
+Admin	Cafeteria, Storage	Cafeteria, Hallway(SE)	Upload Data(2/2), Fix Wiring, Swipe Card	View Admin Map, Fix O2 Depletion(1/2)
 Cafeteria	Admin, MedBay, Storage, Upper Engine, Weapons	Admin, Hallway(SE)	Empty Garbage(1/2), Fix Wiring, Upload Data(1/2)	Call Emergency Meeting
 Communications	Shields, Storage	None	Divert Power(2/2), Upload Data(1/2)	Fix Communications Sabotage
 Electrical	Storage, LowerEngine	MedBay, Security	Calibrate Disbributer, Divert Power(1/2), Download Data(1/2), Fix Wiring	Fix Lights
