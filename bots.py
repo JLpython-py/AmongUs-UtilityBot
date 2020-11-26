@@ -12,6 +12,7 @@ import discord
 from discord.ext import commands
 
 logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(levelname)s - %(message)s')
+
 class UtilBot(commands.Bot):
     def __init__(self, *, command_prefix, name):
         '''
@@ -31,8 +32,12 @@ class UtilBot(commands.Bot):
             Messages that do not comply to the regex are considered spam
             Spam messages are deleted
 '''
+        logging.info((message.author.name, message.channel, message.content))
         #Ignore all bot messages
         if message.author.bot:
+            return
+        if 'Direct Message' in str(message.channel):
+            await message.channel.send("Direct Messaging is not supported")
             return
         ##introductions - Only allow *introduction, *help commands
         if message.channel.name == 'introductions':
@@ -61,7 +66,7 @@ class UtilBot(commands.Bot):
             if not results:
                 await message.delete()
         ##dev-guild - Allow all messages and commands
-        else:
+        elif message.channel.name == 'dev-build':
             await self.process_commands(message)
 
     def execute_commands(self):
@@ -76,6 +81,7 @@ class UtilBot(commands.Bot):
                 Other Return Values:
                 - User is granted Member role
                 - Information is stored for other Members to reference
+                Restrictions: #introductions
 '''
             #Ignore commands outside #introductions
             if ctx.message.channel.name != 'introductions':
@@ -97,7 +103,7 @@ class UtilBot(commands.Bot):
                 embed.add_field(
                     name="Not", value="AmongUs, among us, amongus")
                 await direct_message.send(embed=embed)
-                #Delete failed message
+                #Delete invalid command
                 await ctx.message.delete()
                 return
             else:
@@ -123,13 +129,13 @@ class UtilBot(commands.Bot):
             #Write information to members.csv to be referenced
             with open('members.txt') as jsonfile:
                 data = json.load(jsonfile)
-                data[member] = name
+                data[member.name] = name
             with open('members.txt', 'w') as outfile:
                 json.dump(data, outfile)
             #Create and send new member information embed to #members channel
             embed = discord.Embed(
                 title="Member Information Card", color=0xffff00)
-            embed.add_field(name="Nickname", value=member)
+            embed.add_field(name="Nickname", value=member.name)
             embed.add_field(name="Name", value=name)
             channel = discord.utils.get(ctx.guild.channels, name="members")
             await channel.send(embed=embed)
@@ -140,13 +146,14 @@ class UtilBot(commands.Bot):
                 Return Embed Values:
                 - Member nickname
                 - Member name
+                Restridctions: #members
 '''
             #Ignore commands outside #members
             if ctx.message.channel.name != 'members':
                 return
-            nickname = ''.join(nickname)
+            nickname = ' '.join(nickname)
             #Convert data to nickname:name dictionary
-            with open('members.txt') as jsonfle:
+            with open('members.txt') as jsonfile:
                 data = json.load(jsonfile)
             #Assert that nickname is on file
             if nickname not in data:
@@ -166,6 +173,7 @@ class UtilBot(commands.Bot):
                 Return Embed Values:
                 - Member nickname
                 - Member name
+                Restrictions: #members
 '''
             #Ignore commands outside #members
             if ctx.message.channel.name != 'members':
@@ -196,28 +204,19 @@ class MapBot(commands.Bot):
         commands.Bot.__init__(
             self, command_prefix=command_prefix, self_bot=False)
         self.name = name
+        self.directory = directory
         self.files = {
-            'Map': fr'.\docs\{directory}\map.jpg',
-            'Rooms': fr'.\docs\{directory}\rooms.csv',
-            'Actions': fr'.\docs\{directory}\actions.csv',
-            #'Security': fr'.\docs\{directory}\security.csv',
-            'Tasks': fr'.\docs\{directory}\tasks.csv',
-            'Vents': fr'.\docs\{directory}\vents.csv'}
+            'Actions': fr'docs\{self.directory}\actions.csv',
+            'Map': fr'docs\{self.directory}\map.jpg',
+            'Locations': fr'docs\{self.directory}\locations.csv',
+            'Tasks': fr'docs\{self.directory}\tasks.csv',
+            'Vents': fr'docs\{self.directory}\vents.csv'}
         self.data = {}
-        self.read_image('Map')
-        self.read_csv('Rooms')
         self.read_csv('Actions')
-        #self.read_csv('Security')
+        self.read_csv('Locations')
         self.read_csv('Tasks')
         self.read_csv('Vents')
         self.execute_commands()
-
-    def read_image(self, category):
-        ''' Load an image of the map
-'''
-        file = self.files[category]
-        filename = os.path.split(file)[-1]
-        self.data[category] = discord.File(file, filename)
 
     def read_csv(self, category):
         ''' Read csv data for each map
@@ -247,8 +246,10 @@ class MapBot(commands.Bot):
                 - High-detail image of corresponding map
 '''
             embed = discord.Embed(title="Map", color=0x0000ff)
+            filename = "map.jpg"
+            file = discord.File(
+                fr"docs\{self.directory}\map.jpg")
             embed.set_image(url="attachment://map.jpg")
-            file = self.data['Map']
             await ctx.send(file=file, embed=embed)
 
         @self.command(name="tasks", pass_context=True)
@@ -262,13 +263,32 @@ class MapBot(commands.Bot):
                 embed.add_field(name=i, value=task)
             await ctx.send(embed=embed)
 
+        @self.command(name="task_type", pass_context=True)
+        async def task_type(ctx, type_name):
+            ''' Command: MapBot.task_type Type
+                Return Embed Values:
+                - List of all tasks which are classified as such
+'''
+            tasks = []
+            for task in self.data['Tasks']:
+                if type_name.title() in self.data['Tasks'][task]['Type']:
+                    tasks.append(task)
+            if not tasks:
+                await ctx.send(f"{type_name} cannot be found")
+                await ctx.message.delete()
+                return
+            embed = discord.Embed(title=f"Task: {type_name}", color=0x0000ff)
+            for i, task in enumerate(tasks, 1):
+                embed.add_field(name=i, value=task)
+            await ctx.send(embed=embed)
+
         @self.command(name="task", pass_context=True)
         async def task(ctx, *name):
             ''' Command: MapBot.task Task Name
                 Return Embed Values:
                 - Name of task
                 - Type of task
-                - Rooms in which the task can be completed
+                - Locations where the task can be completed
                 - Number of steps required to complete the task
 '''
             data = None
@@ -284,43 +304,51 @@ class MapBot(commands.Bot):
             embed = discord.Embed(title=f"Task: {task}", color=0x0000ff)
             for aspect in data:
                 embed.add_field(name=aspect, value=data[aspect])
-            embed.set_footer(text="* denotes a required room")
-            await ctx.send(embed=embed)
+            filename = f"{data['Name']}.png"
+            file = discord.File(
+                fr"docs\{self.directory}\tasks\{filename}", filename)
+            embed.set_image(url=f"attachment://{filename}")
+            await ctx.send(file=file, embed=embed)
 
-        @self.command(name="rooms", pass_context=True)
-        async def rooms(ctx):
-            ''' Command: MapBot.rooms
+        @self.command(name="locations", pass_context=True)
+        async def locations(ctx):
+            ''' Command: MapBot.locations
                 Return Embed Values:
-                - List of all rooms on the map
+                - List of all locations on the map
 '''
-            embed = discord.Embed(title="Rooms", color = 0x0000ff)
-            for i, room in enumerate(self.data["Rooms"], 1):
+            embed = discord.Embed(title="Locations", color = 0x0000ff)
+            for i, room in enumerate(self.data["Locations"], 1):
                 embed.add_field(name=i, value=room)
             await ctx.send(embed=embed)
 
-        @self.command(name="room", pass_context=True)
-        async def room(ctx, *name):
-            ''' Command: MapBot.room Room Name
+        @self.command(name="location", pass_context=True)
+        async def location(ctx, *name):
+            ''' Command: MapBot.location Location Name
                 Return Embed Values:
-                - Name of room
-                - Directly connected rooms
-                - Rooms connected by vents
-                - Tasks which can be complete in the room
-                - Actions which can be cone in the rooms
+                - Name of location
+                - Directly connected locations
+                - Locations connected by vents
+                - Tasks which can be complete in the location
+                - Actions which can be cone in the locations
+                - Image of location
 '''
             data = None
-            for room in self.data['Rooms']:
-                if ''.join(name).lower() == ''.join(room.split()).lower():
-                    data = self.data['Rooms'][room]
+            for location in self.data['Locations']:
+                if ''.join(name).lower() == ''.join(location.split()).lower():
+                    data = self.data['Locations'][location]
                     break
             if data is None:
                 await ctx.send(f"{name} cannot be found")
                 await ctx.message.delete()
                 return
-            embed = discord.Embed(title=f"Room: {room}", color = 0x0000ff)
+            embed = discord.Embed(title=f"Location: {location}", color = 0x0000ff)
             for aspect in data:
                 embed.add_field(name=aspect, value=data[aspect])
-            await ctx.send(embed=embed)
+            filename = f"{data['Name']}.png"
+            file = discord.File(
+                fr"docs\{self.directory}\locations\{filename}", filename)
+            embed.set_image(url=f"attachment://{filename}")
+            await ctx.send(file=file, embed=embed)
 
         @self.command(name="vents", pass_context=True)
         async def vents(ctx):
@@ -335,10 +363,10 @@ class MapBot(commands.Bot):
 
         @self.command(name="vent", pass_context=True)
         async def vent(ctx, *name):
-            ''' Command: MapBot.vent Room Name
+            ''' Command: MapBot.vent Location Name
                 Return Embed Values:
-                - Name of room
-                - Rooms connected by vents
+                - Name of location
+                - Locations connected by vents
 '''
             data = None
             for vent in self.data['Vents']:
@@ -365,12 +393,14 @@ class MapBot(commands.Bot):
                 embed.add_field(name=i, value=action)
             await ctx.send(embed=embed)
 
-        @self.command(name="action", pass_context=True)
+        @self.command(name="action", pass_contextroo=True)
         async def action(ctx, *name):
             ''' Command: MapBot.action Action Name
                 Return Embed Values:
                 - Name of action
                 - Type of action
+                - Locations where action can be done
+                - Severity of action
 '''
             data = None
             for action in self.data['Actions']:

@@ -1,5 +1,5 @@
-Name	Type	Rooms	Severity
-Check Admin Table	Monitor	Admin	None
+Name	Type	Locations	Severity
+View Admin Table	Monitor	Admin	None
 Check Security Cameras	Monitor	Security	None
 Check Vitals	Monitor	Office	None
 Fix Communications	Fix Sabotage	Communications	Major

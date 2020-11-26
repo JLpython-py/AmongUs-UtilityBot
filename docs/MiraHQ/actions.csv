@@ -1,5 +1,5 @@
-Name	Type	Rooms	Severity
-Check Admin Table	Monitor	Admin	N/A
+Name	Type	Locations	Severity
+View Admin Table	Monitor	Admin	N/A
 Check Sensors	Monitor	Communications	N/A
 Fix Communications Sabotage	Fix Sabotage	Communications, Office	Major
 Fix Lights	Fix Sabotage	Office	Major
