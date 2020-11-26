@@ -204,12 +204,13 @@ class MapBot(commands.Bot):
         commands.Bot.__init__(
             self, command_prefix=command_prefix, self_bot=False)
         self.name = name
+        self.directory = directory
         self.files = {
-            'Actions': fr'.\docs\{directory}\actions.csv',
-            'Map': fr'.\docs\{directory}\map.jpg',
-            'Rooms': fr'.\docs\{directory}\rooms.csv',
-            'Tasks': fr'.\docs\{directory}\tasks.csv',
-            'Vents': fr'.\docs\{directory}\vents.csv'}
+            'Actions': fr'docs\{self.directory}\actions.csv',
+            'Map': fr'docs\{self.directory}\map.jpg',
+            'Rooms': fr'docs\{self.directory}\rooms.csv',
+            'Tasks': fr'docs\{self.directory}\tasks.csv',
+            'Vents': fr'docs\{self.directory}\vents.csv'}
         self.data = {}
         self.read_image('Map')
         self.read_csv('Actions')
@@ -309,8 +310,12 @@ class MapBot(commands.Bot):
             embed = discord.Embed(title=f"Task: {task}", color=0x0000ff)
             for aspect in data:
                 embed.add_field(name=aspect, value=data[aspect])
+            filename = f"{data['Name']}.png"
+            file = discord.File(
+                fr"docs\{self.directory}\tasks\{filename}", filename)
+            embed.set_image(url=f"attachment://{filename}")
             embed.set_footer(text="* denotes a required room")
-            await ctx.send(embed=embed)
+            await ctx.send(file=file, embed=embed)
 
         @self.command(name="rooms", pass_context=True)
         async def rooms(ctx):
