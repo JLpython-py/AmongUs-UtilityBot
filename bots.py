@@ -114,7 +114,7 @@ class UtilBot(commands.Bot):
                 embed = discord.Embed(
                     title="Confirm Introduction", color=0x00ff00)
                 fields = {
-                    "Name set to": name,
+                    "Name set to": ' '.join(name.split()[-2:]),
                     "Role": "You have now been granted the 'Member' role",
                     "Status": "You can now view the rest of the server",
                     "Typo?": "Run this command to override previous entries"}
@@ -124,9 +124,10 @@ class UtilBot(commands.Bot):
                 #Add 'Member' role to member
                 await member.add_roles(role)
             #Write information to members.csv to be referenced
-            with open(os.path.join('data', 'members.txt'), 'w+') as jsonfile:
+            with open(os.path.join('data', 'members.txt'), 'r') as jsonfile:
                 data = json.load(jsonfile)
                 data[member.name] = name
+            with open(os.path.join('data', 'members.txt'), 'w') as jsonfile:
                 json.dump(data, jsonfile)
             #Create and send new member information embed to #members channel
             embed = discord.Embed(
