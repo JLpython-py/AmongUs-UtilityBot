@@ -119,7 +119,7 @@ class UtilBot(commands.Bot):
                     "Status": "You can now view the rest of the server",
                     "Typo?": "Run this command to override previous entries"}
                 for field in fields:
-                    embed.add_field(name=field, values=fields[field])
+                    embed.add_field(name=field, value=fields[field])
                 await direct_message.send(embed=embed)
                 #Add 'Member' role to member
                 await member.add_roles(role)

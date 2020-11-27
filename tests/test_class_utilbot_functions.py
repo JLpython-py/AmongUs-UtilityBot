@@ -47,7 +47,8 @@ class TestCommandIntroduction(unittest.TestCase):
             '*introduction FLast': False, '*introduction FirstL': False,
             '*introduction F Last': False, '*introduction First L': False,
             '*introduction First M Last': False,
-            '*introduction First Middle Last': False}
+            '*introduction First Middle Last': False,
+            '*introduction Marcus Lee': True}
         regex = re.compile(r'^\*introduction(\s[A-Z][a-z]+){2}$')
         results = []
         for sample in samples:
