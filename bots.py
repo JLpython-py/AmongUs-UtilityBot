@@ -124,9 +124,8 @@ class UtilBot(commands.Bot):
                 #Add 'Member' role to member
                 await member.add_roles(role)
             #Write information to members.csv to be referenced
-            with open('.\data\members.txt', 'r') as jsonfile:
+            with open(os.path.join('data', 'members.txt'), 'w+') as jsonfile:
                 data = json.load(jsonfile)
-            with open('.\data\members.txt', 'w+') as jsonfile:
                 data[member.name] = name
                 json.dump(data, jsonfile)
             #Create and send new member information embed to #members channel
@@ -152,7 +151,7 @@ class UtilBot(commands.Bot):
             if ctx.message.channel.name != 'members':
                 return
             #Convert data to nickname:name dictionary
-            with open(r'.\data\members.txt') as jsonfile:
+            with open(os.path.join('data', 'members.txt')) as jsonfile:
                 data = json.load(jsonfile)
             #Assert that nickname is on file
             if nickname not in data:
@@ -179,7 +178,7 @@ class UtilBot(commands.Bot):
                 return
             name = ' '.join(name).title()
             #Convert data to name:nickname dictionary
-            with open('.\data\members.txt') as jsonfile:
+            with open(os.path.join('data', 'members.txt')) as jsonfile:
                 data = {v:k for k, v in json.load(jsonfile).items()}
             #Assert that name is on file
             if name not in data:
@@ -205,10 +204,10 @@ class MapBot(commands.Bot):
         self.name = name
         self.directory = directory
         self.files = {
-            'Actions': fr'.\data\{self.directory}\actions.csv',
-            'Locations': fr'.\data\{self.directory}\locations.csv',
-            'Tasks': fr'.\data\{self.directory}\tasks.csv',
-            'Vents': fr'.\data\{self.directory}\vents.csv'}
+            'Actions': os.path.join('data', self.directory, 'actions.csv'),
+            'Locations': os.path.join('data', self.directory, 'locations.csv'),
+            'Tasks': os.path.join('data', self.directory, 'tasks.csv'),
+            'Vents': os.path.join('data', self.directory, 'vents.csv')}
         self.data = {}
         self.read_files()
         self.execute_commands()
@@ -240,9 +239,9 @@ class MapBot(commands.Bot):
                 - High-detail image of corresponding map
 '''
             embed = discord.Embed(title="Map", color=0x0000ff)
-            filename = "map.jpg"
             file = discord.File(
-                fr".\data\{self.directory}\map.jpg")
+                os.path.join('data', self.directory, "map.jpg"),
+                "map.jpg")
             embed.set_image(url="attachment://map.jpg")
             await ctx.send(file=file, embed=embed)
 
@@ -300,7 +299,8 @@ class MapBot(commands.Bot):
                 embed.add_field(name=aspect, value=data[aspect])
             filename = f"{data['Name']}.png"
             file = discord.File(
-                fr".\data\{self.directory}\tasks\{filename}", filename)
+                os.path.join('data', self.directory, 'tasks', filename),
+                filename)
             embed.set_image(url=f"attachment://{filename}")
             await ctx.send(file=file, embed=embed)
 
@@ -340,7 +340,8 @@ class MapBot(commands.Bot):
                 embed.add_field(name=aspect, value=data[aspect])
             filename = f"{data['Name']}.png"
             file = discord.File(
-                fr".\data\{self.directory}\locations\{filename}", filename)
+                os.path.join('data', self.directory, 'location', filename),
+                filename)
             embed.set_image(url=f"attachment://{filename}")
             await ctx.send(file=file, embed=embed)
 
@@ -417,7 +418,7 @@ class Main:
         #Gather general data for each bot
         self.map_bots = ('The Skeld', 'Mira HQ', 'Polus')#, 'Airship')
         self.util_bots = ('Utils',)
-        with open(r'.\data\tokens.txt') as jsonfile:
+        with open(os.path.join('data', 'tokens.txt')) as jsonfile:
             self.tokens = json.load(jsonfile)
 
         self.loop = asyncio.get_event_loop()
