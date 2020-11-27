@@ -41,31 +41,31 @@ class UtilBot(commands.Bot):
             return
         ##introductions - Only allow *introduction, *help commands
         if message.channel.name == 'introductions':
-            command_regex = re.compile(r'(^(\*introduction)\s\w+)|(\*help)')
-            results = command_regex.findall(message.content)
+            regex = re.compile(r'^\*(introduction|help$)')
+            results = regex.findall(message.content)
             if not results:
                 await message.delete()
             await self.process_commands(message)
         ##members - Only allow *member_name, *member_nickname
         elif message.channel.name == 'members':
-            command_regex = re.compile(r'^(\*member_name)|(\*member_nickname)')
-            results = command_regex.findall(message.content)
+            regex = re.compile(r'^\*(member_name|member_nickname)')
+            results = regex.findall(message.content)
             if not results:
                 await message.delete()
             await self.process_commands(message)
         ##game-codes - Only allow working Among Us game codes
         elif message.channel.name == 'game-codes':
-            code_regex = re.compile(r'^[A-Za-z]{6}$')
-            results = code_regex.findall(message.content)
+            regex = re.compile(r'^\w{6}$')
+            results = regex.findall(message.content)
             if not results:
                 await message.delete()
         ##bot-commands - Only allow messages with valid map bot prefixes
-        elif message.channel.name == 'map-bots':
-            command_regex = re.compile(r'^(MiraHQ\.)|(Polus\.)|(TheSkeld\.)')
-            results = command_regex.findall(message.content)
+        elif message.channel.name == 'mapbot-commands':
+            regex = re.compile(r'^(MiraHQ|Polus|TheSkeld)\.')
+            results = regex.findall(message.content)
             if not results:
                 await message.delete()
-        ##dev-guild - Allow all messages and commands
+        ##dev-build - Allow all messages and commands
         elif message.channel.name == 'dev-build':
             await self.process_commands(message)
 
@@ -87,21 +87,21 @@ class UtilBot(commands.Bot):
             if ctx.message.channel.name != 'introductions':
                 return
             #Parse message for a valid name
-            name_regex = re.compile(r'[A-Z][a-z]+ [A-Z][a-z]+')
-            results = name_regex.search(ctx.message.content)
+            regex = re.compile(r'^\*introduction(\s[A-Z][a-z]+){2}$')
+            results = regex.search(ctx.message.content)
             #Create a direct message to notify member of message status
             direct_message = await ctx.message.author.create_dm()
             if results is None:
                 #Create and send an embed containing status information
                 embed = discord.Embed(
                     title="Invalid Introduction", color=0x00ff00)
-                embed.add_field(
-                    name="Error", value="Name not detected in entry")
-                embed.add_field(
-                    name="Acceptable Format", value="[A-Z][a-z]+ [A-Z][a-z]+")
-                embed.add_field(name="Example", value="Among Us")
-                embed.add_field(
-                    name="Not", value="AmongUs, among us, amongus")
+                fileds = {
+                    "Error": "Name not detected in entry",
+                    "Acceptable Format": "^\*introduction(\s[A-Z][a-z]+){2}$",
+                    "Example": "Among Us",
+                    "Not": "AMONG US, AmongUs, among us, amongus"}
+                for field in fields:
+                    embed.add_field(name=field, value=fields[field])
                 await direct_message.send(embed=embed)
                 #Delete invalid command
                 await ctx.message.delete()
@@ -113,35 +113,35 @@ class UtilBot(commands.Bot):
                 #Create and send an embed containing status information
                 embed = discord.Embed(
                     title="Confirm Introduction", color=0x00ff00)
-                embed.add_field(name="Name set to", value=name)
-                embed.add_field(
-                    name="Role",
-                    value="You have now been granted the @Member role")
-                embed.add_field(
-                    name="Status",
-                    value="You can now view the rest of the Among Us server")
-                embed.add_field(
-                    name="Typo?",
-                    value="Run this command again to override the original")
+                fields = {
+                    "Name set to": name,
+                    "Role": "You have now been granted the 'Member' role",
+                    "Status": "You can now view the rest of the server",
+                    "Typo?": "Run this command to override previous entries"}
+                for field in fields:
+                    embed.add_field(name=field, values=fields[field])
                 await direct_message.send(embed=embed)
                 #Add 'Member' role to member
                 await member.add_roles(role)
             #Write information to members.csv to be referenced
-            with open('members.txt') as jsonfile:
+            with open('.\data\members.txt', 'r') as jsonfile:
                 data = json.load(jsonfile)
+            with open('.\data\members.txt', 'w+') as jsonfile:
                 data[member.name] = name
-            with open('members.txt', 'w') as outfile:
-                json.dump(data, outfile)
+                json.dump(data, jsonfile)
             #Create and send new member information embed to #members channel
             embed = discord.Embed(
                 title="Member Information Card", color=0xffff00)
-            embed.add_field(name="Nickname", value=member.name)
-            embed.add_field(name="Name", value=name)
+            fields = {
+                "Nickname": member.name,
+                "Name": name}
+            for field in fields:
+                embed.add_field(name=field, value=fields[field])
             channel = discord.utils.get(ctx.guild.channels, name="members")
             await channel.send(embed=embed)
 
         @self.command(name="member_name", pass_context=True)
-        async def member_name(ctx, *nickname):
+        async def member_name(ctx, nickname):
             ''' Command: *member_name nickname
                 Return Embed Values:
                 - Member nickname
@@ -151,9 +151,8 @@ class UtilBot(commands.Bot):
             #Ignore commands outside #members
             if ctx.message.channel.name != 'members':
                 return
-            nickname = ' '.join(nickname)
             #Convert data to nickname:name dictionary
-            with open('members.txt') as jsonfile:
+            with open(r'.\data\members.txt') as jsonfile:
                 data = json.load(jsonfile)
             #Assert that nickname is on file
             if nickname not in data:
@@ -180,7 +179,7 @@ class UtilBot(commands.Bot):
                 return
             name = ' '.join(name).title()
             #Convert data to name:nickname dictionary
-            with open('members.txt') as jsonfile:
+            with open('.\data\members.txt') as jsonfile:
                 data = {v:k for k, v in json.load(jsonfile).items()}
             #Assert that name is on file
             if name not in data:
@@ -206,30 +205,25 @@ class MapBot(commands.Bot):
         self.name = name
         self.directory = directory
         self.files = {
-            'Actions': fr'docs\{self.directory}\actions.csv',
-            'Map': fr'docs\{self.directory}\map.jpg',
-            'Locations': fr'docs\{self.directory}\locations.csv',
-            'Tasks': fr'docs\{self.directory}\tasks.csv',
-            'Vents': fr'docs\{self.directory}\vents.csv'}
+            'Actions': fr'.\data\{self.directory}\actions.csv',
+            'Locations': fr'.\data\{self.directory}\locations.csv',
+            'Tasks': fr'.\data\{self.directory}\tasks.csv',
+            'Vents': fr'.\data\{self.directory}\vents.csv'}
         self.data = {}
-        self.read_csv('Actions')
-        self.read_csv('Locations')
-        self.read_csv('Tasks')
-        self.read_csv('Vents')
+        self.read_files()
         self.execute_commands()
 
-    def read_csv(self, category):
-        ''' Read csv data for each map
+    def read_files(self):
+        ''' Read CSV data for each map
 '''
-        with open(self.files[category]) as csvfile:
-            csvreader = csv.reader(csvfile, delimiter='\t')
-            data = list(csvreader)
-            headers = data.pop(0)
-        self.data[category] = {}
-        for row in data:
-            info = dict(zip(headers, row))
-            name = info['Name']
-            self.data[category].setdefault(name, info)
+        for category in self.files:
+            with open(self.files[category]) as csvfile:
+                data = list(csv.reader(csvfile, delimiter='\t'))
+                headings = data.pop(0)
+            self.data[category] = {}
+            for row in data:
+                info = dict(zip(headings, row))
+                self.data[category].setdefault(info['Name'], info)
 
     async def on_ready(self):
         ''' Notify developer that a MapBot-class bot is active
@@ -248,7 +242,7 @@ class MapBot(commands.Bot):
             embed = discord.Embed(title="Map", color=0x0000ff)
             filename = "map.jpg"
             file = discord.File(
-                fr"docs\{self.directory}\map.jpg")
+                fr".\data\{self.directory}\map.jpg")
             embed.set_image(url="attachment://map.jpg")
             await ctx.send(file=file, embed=embed)
 
@@ -306,7 +300,7 @@ class MapBot(commands.Bot):
                 embed.add_field(name=aspect, value=data[aspect])
             filename = f"{data['Name']}.png"
             file = discord.File(
-                fr"docs\{self.directory}\tasks\{filename}", filename)
+                fr".\data\{self.directory}\tasks\{filename}", filename)
             embed.set_image(url=f"attachment://{filename}")
             await ctx.send(file=file, embed=embed)
 
@@ -346,7 +340,7 @@ class MapBot(commands.Bot):
                 embed.add_field(name=aspect, value=data[aspect])
             filename = f"{data['Name']}.png"
             file = discord.File(
-                fr"docs\{self.directory}\locations\{filename}", filename)
+                fr".\data\{self.directory}\locations\{filename}", filename)
             embed.set_image(url=f"attachment://{filename}")
             await ctx.send(file=file, embed=embed)
 
@@ -423,7 +417,7 @@ class Main:
         #Gather general data for each bot
         self.map_bots = ('The Skeld', 'Mira HQ', 'Polus')#, 'Airship')
         self.util_bots = ('Utils',)
-        with open('tokens.txt') as jsonfile:
+        with open(r'.\data\tokens.txt') as jsonfile:
             self.tokens = json.load(jsonfile)
 
         self.loop = asyncio.get_event_loop()
