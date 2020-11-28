@@ -1,0 +1,1 @@
+{"introductions": {"*introduction": true, "*help": true}, "members": {"*member_name": true, "*member_nickname": true}, "game-codes": {"ABCDEF": true, "abcdef": true, "123456": false, "abc123": false, "abc": false, "abcdefghji": false}, "mapbot-commands": {"MiraHQ.": true, "Polus.": true, "TheSkeld.": true}, "suggestions-and-bugs": {"*suggestion": true, "*bug": true}}
