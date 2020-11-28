@@ -39,35 +39,17 @@ class UtilBot(commands.Bot):
         if 'Direct Message' in str(message.channel):
             await message.channel.send("Direct Messaging is not supported")
             return
-        ##introductions - Only allow *introduction, *help commands
-        if message.channel.name == 'introductions':
-            regex = re.compile(r'^\*(introduction|help$)')
-            results = regex.findall(message.content)
-            if not results:
-                await message.delete()
-            await self.process_commands(message)
-        ##members - Only allow *member_name, *member_nickname
-        elif message.channel.name == 'members':
-            regex = re.compile(r'^\*(member_name|member_nickname)')
-            results = regex.findall(message.content)
-            if not results:
-                await message.delete()
-            await self.process_commands(message)
-        ##game-codes - Only allow working Among Us game codes
-        elif message.channel.name == 'game-codes':
-            regex = re.compile(r'^\w{6}$')
-            results = regex.findall(message.content)
-            if not results:
-                await message.delete()
-        ##bot-commands - Only allow messages with valid map bot prefixes
-        elif message.channel.name == 'mapbot-commands':
-            regex = re.compile(r'^(MiraHQ|Polus|TheSkeld)\.')
-            results = regex.findall(message.content)
-            if not results:
-                await message.delete()
-        ##dev-build - Allow all messages and commands
-        elif message.channel.name == 'dev-build':
-            await self.process_commands(message)
+        with open(os.path.join('data', 'regex.txt')) as file:
+            regexes = dict([line.strip('\n').split('\t') for line in file])
+        for channel in regexes:
+            if channel in message.channel.name:
+                break
+        regex = re.compile(regexes[channel])
+        results = regex.findall(message.content)
+        if not results:
+            await message.delete()
+            return
+        await self.process_commands(message)
 
     def execute_commands(self):
         ''' UtilBot-class bot commands which can be used by members
@@ -123,7 +105,7 @@ class UtilBot(commands.Bot):
                 await direct_message.send(embed=embed)
                 #Add 'Member' role to member
                 await member.add_roles(role)
-            #Write information to members.csv to be referenced
+            #Write information to members.txt to be referenced
             with open(os.path.join('data', 'members.txt'), 'r') as jsonfile:
                 data = json.load(jsonfile)
                 data[member.name] = name
@@ -193,7 +175,29 @@ class UtilBot(commands.Bot):
             embed.add_field(name="Name", value=name)
             await ctx.message.delete()
             await ctx.send(embed=embed)
-            
+
+        @self.command(name="suggestion", pass_context=True)
+        async def suggestion(ctx, *suggestion):
+            ''' Command: *suggestion Suggestion goes here
+'''
+            if ctx.message.channel.name != 'suggestions-and-bugs':
+                return
+            reactions = [
+                "<:Victory:779396489792847892>",
+                "<:Defeat:779396491667963904>"]
+            for emoji in reactions:
+                await ctx.message.add_reaction(emoji)
+
+        @self.command(name="bug", pass_context=True)
+        async def bug(ctx, *bug):
+            ''' Command: *bug Bug goes here
+'''
+            if ctx.message.channel.name != 'suggestions-and-bugs':
+                return
+            reactions = [
+                "<:Report:777211184881467462"]
+            for emoji in reactions:
+                await ctx.message.add_reaction(emoji)
 
 class MapBot(commands.Bot):
     def __init__(self, *, command_prefix, name, directory):
@@ -341,7 +345,7 @@ class MapBot(commands.Bot):
                 embed.add_field(name=aspect, value=data[aspect])
             filename = f"{data['Name']}.png"
             file = discord.File(
-                os.path.join('data', self.directory, 'location', filename),
+                os.path.join('data', self.directory, 'locations', filename),
                 filename)
             embed.set_image(url=f"attachment://{filename}")
             await ctx.send(file=file, embed=embed)
