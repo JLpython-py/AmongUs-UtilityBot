@@ -107,14 +107,14 @@ class UtilBot(commands.Bot):
                 await ctx.message.delete()
                 return
             else:
-                name = results.group()
+                name = ' '.join(results.group().split()[-2:])
                 member = ctx.message.author
                 role = discord.utils.get(member.guild.roles, name="Member")
                 #Create and send an embed containing status information
                 embed = discord.Embed(
                     title="Confirm Introduction", color=0x00ff00)
                 fields = {
-                    "Name set to": ' '.join(name.split()[-2:]),
+                    "Name set to": name,
                     "Role": "You have now been granted the 'Member' role",
                     "Status": "You can now view the rest of the server",
                     "Typo?": "Run this command to override previous entries"}
