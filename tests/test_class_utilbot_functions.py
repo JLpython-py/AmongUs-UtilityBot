@@ -9,9 +9,12 @@ import unittest
 
 class TestOnMessage(unittest.TestCase):
     def test_introductions_regex(self):
-        samples = {
-            '*introduction': True, '*help': True}
-        regex = re.compile(r'^\*(introduction|help$)')
+        with open('sample_cases.txt') as jsonfile:
+            samples = json.load(jsonfile).get('introductions')
+        with open(os.path.join('..', 'data', 'regex.txt')) as file:
+            regex = re.compile(dict(
+                [line.strip('\n').split('\t') for line in file]
+                ).get('introductions'))
         results = []
         for sample in samples:
             results.append(
@@ -19,9 +22,12 @@ class TestOnMessage(unittest.TestCase):
         self.assertTrue(all(results))
 
     def test_members_regex(self):
-        samples = {
-            '*member_name': True, '*member_nickname': True}
-        regex = re.compile(r'^\*(member_name|member_nickname)')
+        with open('sample_cases.txt') as jsonfile:
+            samples = json.load(jsonfile).get('members')
+        with open(os.path.join('..', 'data', 'regex.txt')) as file:
+            regex = re.compile(dict(
+                [line.strip('\n').split('\t') for line in file]
+                ).get('members'))
         results = []
         for sample in samples:
             results.append(
@@ -29,10 +35,38 @@ class TestOnMessage(unittest.TestCase):
         self.assertTrue(all(results))
 
     def test_game_codes_regex(self):
-        samples = {
-            'ABCDEF': True, 'abcdef': True, '123456': False, 'abc': False,
-            'abcdefghi': False}
-        regex = re.compile(r'^[A-Za-z]{6}$')
+        with open('sample_cases.txt') as jsonfile:
+            samples = json.load(jsonfile).get('game-codes')
+        with open(os.path.join('..', 'data', 'regex.txt')) as file:
+            regex = re.compile(dict(
+                [line.strip('\n').split('\t') for line in file]
+                ).get('game-codes'))
+        results = []
+        for sample in samples:
+            results.append(
+                bool(regex.search(sample)) == samples[sample])
+        self.assertTrue(all(results))
+
+    def test_mapbot_commands_regex(self):
+        with open('sample_cases.txt') as jsonfile:
+            samples = json.load(jsonfile).get('game-codes')
+        with open(os.path.join('..', 'data', 'regex.txt')) as file:
+            regex = re.compile(dict(
+                [line.strip('\n').split('\t') for line in file]
+                ).get('game-codes'))
+        results = []
+        for sample in samples:
+            results.append(
+                bool(regex.search(sample)) == samples[sample])
+        self.assertTrue(all(results))
+
+    def test_suggestions_and_bugs_regex(self):
+        with open('sample_cases.txt') as jsonfile:
+            samples = json.load(jsonfile).get('suggestions-and-bugs')
+        with open(os.path.join('..', 'data', 'regex.txt')) as file:
+            regex = re.compile(dict(
+                [line.strip('\n').split('\t') for line in file]
+                ).get('suggestions-and-bugs'))
         results = []
         for sample in samples:
             results.append(
@@ -62,7 +96,7 @@ class TestCommandIntroduction(unittest.TestCase):
         name = ' '.join(results.group().split()[-2:])
         self.assertTrue(name, 'First Last')
 
-    def test_file_update(self):
+    def test_update_members_txt(self):
         sample = {
             'First0 Last0': 'First0Last0', 'First1 Last2': 'First1Last1',
             'First2 Last2': 'First2Last2', 'First3 Last3': 'First3Last3'}
