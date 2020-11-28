@@ -47,14 +47,20 @@ class TestCommandIntroduction(unittest.TestCase):
             '*introduction FLast': False, '*introduction FirstL': False,
             '*introduction F Last': False, '*introduction First L': False,
             '*introduction First M Last': False,
-            '*introduction First Middle Last': False,
-            '*introduction Marcus Lee': True}
+            '*introduction First Middle Last': False}
         regex = re.compile(r'^\*introduction(\s[A-Z][a-z]+){2}$')
         results = []
         for sample in samples:
             results.append(
                 bool(regex.search(sample)) == samples[sample])
         self.assertTrue(all(results))
+
+    def test_retrieve_name(self):
+        sample = '*introduction First Last'
+        regex = re.compile(r'^\*introduction(\s[A-Z][a-z]+){2}$')
+        results = regex.search(sample)
+        name = ' '.join(results.group().split()[-2:])
+        self.assertTrue(name, 'First Last')
 
     def test_file_update(self):
         sample = {
