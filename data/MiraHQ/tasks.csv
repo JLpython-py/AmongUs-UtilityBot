@@ -1,5 +1,5 @@
 Name	Type	Locations	Steps	Description
-Assemble Artifacts	Short	Laboratory	1	"Fix the crystal"
+Assemble Artifact	Short	Laboratory	1	"Fix the crystal"
 Buy Beverage	Short	Cafeteria	1	"Buy the drink which is depicted in the lower right corner"
 Chart Course	Short	Admin	1	"Tap and drag the ship along the grid line."
 Clean O2 Filter	Short	Greenhouse	1	"Tap and drag the floating leaves toward the hole."
