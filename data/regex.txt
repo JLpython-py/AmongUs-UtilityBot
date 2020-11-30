@@ -1,6 +1,6 @@
-introductions-deprecated	[A-Z][a-z]+\w[A-Z][a-z]+
-introductions	^\*(introduction|help$)
-members	^\*(member_name|member_nickname)
+introductions-deprecated	[A-Za-z]+\s[A-Za-z]+
+introductions	^\*(introduction\s[A-Za-z]+\s[A-Za-z]+$|help$)
+members	^\*member\s(Nickname|Name)\s[A-Za-z]+\s[A-Za-z]+$
 server-announcements	.*
 among-us-announcements	.*
 general	.*
@@ -10,9 +10,10 @@ game-codes	^[A-Za-z]{6}$
 strategy	.*
 clips-and-highlights	.*
 mapbot-commands	^(MiraHQ|Polus|TheSkeld)\.
-suggestions-and-bugs	^\*(suggestion|bug)
+suggestions-and-bugs	^\*(suggestion|bug|get_points|give_points)
 v-introductions	^\*(introduction|help$)
-v-members	^\*(member_name|member_nickname)
+v-members	^\*member\s(Nickname|Name)\s[A-Z][a-z]+\s[A-Z][a-z]+$
 v-game-codes	^[A-Za-z]{6}$
 v-mapbot-commands	^(MiraHQ|Polus|TheSkeld)\.
+export-data	^\*exp_members
 dev-build	.*

@@ -17,8 +17,11 @@ class UtilBot(commands.Bot):
     def __init__(self, *, command_prefix, name):
         '''
 '''
+        intents = discord.Intents.default()
+        intents.members = True
         commands.Bot.__init__(
-            self, command_prefix=command_prefix, self_bot=False)
+            self, command_prefix=command_prefix, intents=intents,
+            self_bot=False)
         self.name = name
         self.execute_commands()
 
@@ -45,8 +48,8 @@ class UtilBot(commands.Bot):
             if channel in message.channel.name:
                 break
         regex = re.compile(regexes[channel])
-        results = regex.findall(message.content)
-        if not results:
+        results = regex.search(message.content)
+        if results is None:
             await message.delete()
             return
         await self.process_commands(message)
@@ -66,7 +69,7 @@ class UtilBot(commands.Bot):
                 Restrictions: #introductions
 '''
             #Ignore commands outside #introductions
-            if ctx.message.channel.name != 'introductions':
+            if 'introductions' in ctx.message.channel.name:
                 return
             #Parse message for a valid name
             regex = re.compile(r'^\*introduction(\s[A-Z][a-z]+){2}$')
@@ -119,61 +122,40 @@ class UtilBot(commands.Bot):
                 "Name": name}
             for field in fields:
                 embed.add_field(name=field, value=fields[field])
-            channel = discord.utils.get(ctx.guild.channels, name="members")
+            channel = discord.utils.get(
+                ctx.guild.channels, name="members")
             await channel.send(embed=embed)
 
-        @self.command(name="member_name", pass_context=True)
-        async def member_name(ctx, nickname):
-            ''' Command: *member_name nickname
-                Return Embed Values:
-                - Member nickname
-                - Member name
-                Restridctions: #members
+        @self.command(name="member", pass_context=True)
+        async def member(ctx, search_method, *member):
+            '''
 '''
-            #Ignore commands outside #members
-            if ctx.message.channel.name != 'members':
+            channel = self.get_channel(780599994360397825)
+            messages = await channel.history(limit=200).flatten()
+            if search_method == 'Name':
+                search = ' '.join(member)
+            elif search_method == 'Nickname':
+                search = member[0]
+            found = False
+            for message in messages[::-1]:
+                logging.info(message)
+                nickname = message.author.name
+                name = ' '.join(message.content.split()[-2:])
+                if search in message.content:
+                    if search_method == 'Name':
+                        name = search
+                    elif search_method == 'Nickname':
+                        nickname = search
+                    found = True
+                    break
+            if not found:
+                await ctx.send(
+                    f"Could not find {member} [Search by {search_method}]")
                 return
-            #Convert data to nickname:name dictionary
-            with open(os.path.join('data', 'members.txt')) as jsonfile:
-                data = json.load(jsonfile)
-            #Assert that nickname is on file
-            if nickname not in data:
-                await ctx.message.delete()
-                await ctx.send(f"{nickname} could not be found")
-                return
-            #Create and send member information embed
             embed = discord.Embed(
                 title="Member Information Card", color=0xffff00)
             embed.add_field(name="Nickname", value=nickname)
-            embed.add_field(name="Name", value=data.get(nickname))
-            await ctx.send(embed=embed)
-
-        @self.command(name="member_nickname", pass_context=True)
-        async def member_nickname(ctx, *name):
-            ''' Command: *member_nickname name
-                Return Embed Values:
-                - Member nickname
-                - Member name
-                Restrictions: #members
-'''
-            #Ignore commands outside #members
-            if ctx.message.channel.name != 'members':
-                return
-            name = ' '.join(name).title()
-            #Convert data to name:nickname dictionary
-            with open(os.path.join('data', 'members.txt')) as jsonfile:
-                data = {v:k for k, v in json.load(jsonfile).items()}
-            #Assert that name is on file
-            if name not in data:
-                await ctx.message.delete()
-                await ctx.send(f"{name} could not be found")
-                return
-            #Create and send member informatio embed
-            embed = discord.Embed(
-                title="Member Information Card", color=0xffff00)
-            embed.add_field(name="Nickname", value=data.get(name))
             embed.add_field(name="Name", value=name)
-            await ctx.message.delete()
             await ctx.send(embed=embed)
 
         @self.command(name="suggestion", pass_context=True)
@@ -198,6 +180,64 @@ class UtilBot(commands.Bot):
                 "<:Report:777211184881467462"]
             for emoji in reactions:
                 await ctx.message.add_reaction(emoji)
+
+        @self.command(name="get_points", pass_context=True)
+        async def get_points(ctx):
+            '''
+'''
+            for role in ctx.author.roles:
+                points = role.name.strip('_').strip()[-1]
+                if points.isdecimal():
+                    break
+            embed = discord.Embed(title=ctx.author.name, color=0xffff00)
+            embed.add_field(name="Points", value=points)
+            await ctx.send(embed=embed)
+
+        @self.command(name="give_points", pass_context=True)
+        async def give_points(ctx, nickname, plus):
+            '''
+'''
+            if "Developer" not in [r.name for r in ctx.author.roles]:
+                await ctx.message.delete()
+                await ctx.send("You are not authorized to use this command")
+                return
+            found = False
+            for member in ctx.guild.members:
+                if member.name == nickname:
+                    found = True
+                    break
+            logging.info(found)
+            if not found:
+                await ctx.message.delete()
+                await ctx.send(f"Could not find {nickname}")
+                return
+            points = 0
+            for role in member.roles:
+                pts = role.name.strip('_').strip()[-1]
+                if pts.isdecimal():
+                    points = pts
+            new_points = int(points)+int(plus)
+            logging.info((points, new_points))
+            all_points = [role for role in member.roles\
+                          for member in ctx.message.guild.members\
+                          if role.name.isdecimal()]
+            if new_points not in all_points:
+                await ctx.guild.create_role(
+                    name=f"_Contributions: {new_points}_")
+                new_role = discord.utils.get(
+                    ctx.guild.roles, name=f"_Contributions: {new_points}_")
+                await member.add_roles(new_role)
+            if points:
+                old_role = discord.utils.get(
+                    ctx.guild.roles, name=f"_Contributions: {points}_")
+                await member.remove_roles(old_role)
+            all_points = [role for role in member.roles\
+                          for member in ctx.message.guild.members\
+                          if role.name.isdecimal()]
+            if points and points not in all_points:
+                role = discord.utils.get(
+                    ctx.guild.roles, name=f"_Contributions: {points}_")
+                await role.delete()
 
 class MapBot(commands.Bot):
     def __init__(self, *, command_prefix, name, directory):
@@ -245,9 +285,17 @@ class MapBot(commands.Bot):
 '''
             embed = discord.Embed(title="Map", color=0x0000ff)
             file = discord.File(
-                os.path.join('data', self.directory, "map.jpg"),
-                "map.jpg")
-            embed.set_image(url="attachment://map.jpg")
+                os.path.join('data', self.directory, "Map.jpg"),
+                "Map.jpg")
+            embed.set_image(url="attachment://Map.jpg")
+            await ctx.send(file=file, embed=embed)
+
+        async def sabotage_map(ctx):
+            embed = discord.Embed(title="Sabotage Map", color=0x0000ff)
+            file = discord.File(
+                os.path.join('data', self.directory, "Sabotage Map.jpg"),
+                "Sabotage Map.jpg")
+            embed.set_image(url="attachment://Sabotage Map.jpg")
             await ctx.send(file=file, embed=embed)
 
         @self.command(name="tasks", pass_context=True)
