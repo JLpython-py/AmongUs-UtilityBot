@@ -42,8 +42,8 @@ class UtilBot(commands.Bot):
         if 'Direct Message' in str(message.channel):
             await message.channel.send("Direct Messaging is not supported")
             return
-        with open(os.path.join('data', 'regex.txt')) as file:
-            regexes = dict([line.strip('\n').split('\t') for line in file])
+        with open(os.path.join('data', 'regex.csv')) as csvfile:
+            regexes = dict(list(csv.reader(csvfile, delimiter='\t')))
         for channel in regexes:
             if channel in message.channel.name:
                 break
@@ -108,12 +108,6 @@ class UtilBot(commands.Bot):
                 await direct_message.send(embed=embed)
                 #Add 'Member' role to member
                 await member.add_roles(role)
-            #Write information to members.txt to be referenced
-            with open(os.path.join('data', 'members.txt'), 'r') as jsonfile:
-                data = json.load(jsonfile)
-                data[member.name] = name
-            with open(os.path.join('data', 'members.txt'), 'w') as jsonfile:
-                json.dump(data, jsonfile)
             #Create and send new member information embed to #members channel
             embed = discord.Embed(
                 title="Member Information Card", color=0xffff00)
@@ -185,16 +179,38 @@ class UtilBot(commands.Bot):
         async def get_points(ctx):
             '''
 '''
+            with open(os.path.join('data', 'tiers.csv')) as csvfile:
+                tiers = dict(list(csv.reader(csvfile, delimiter='\t')))
+                tiers = {int(k):v for k, v in tiers.items()}
+            points = 0
             for role in ctx.author.roles:
-                points = role.name.strip('_').strip()[-1]
-                if points.isdecimal():
+                if '_Contributions' in role.name:
+                    points = int(role.name.strip('_').split()[-1])
                     break
-            embed = discord.Embed(title=ctx.author.name, color=0xffff00)
-            embed.add_field(name="Points", value=points)
+            logging.info(points)
+            current_tier, next_tier = 'None', 'Bronze Contributor'
+            for t in list(tiers):
+                if t < points:
+                    current_tier = tiers[t]
+                elif t > points:
+                    next_tier, until = tiers[t], t-points
+                    break
+            if points >= 100:
+                next_tier, until = '---', '---'
+            role = discord.utils.get(ctx.guild.roles, name=current_tier)
+            color = 0x000000 if role is None else role.color
+            fields = {
+                "Points": points,
+                "Current Tier": current_tier,
+                "Next Tier": next_tier,
+                "Points until next tier": until}
+            embed = discord.Embed(title=ctx.author.name, color=color)
+            for field in fields:
+                embed.add_field(name=field, value=fields[field])
             await ctx.send(embed=embed)
 
         @self.command(name="give_points", pass_context=True)
-        async def give_points(ctx, nickname, plus):
+        async def give_points(ctx, plus, *nickname):
             '''
 '''
             if "Developer" not in [r.name for r in ctx.author.roles]:
@@ -203,41 +219,48 @@ class UtilBot(commands.Bot):
                 return
             found = False
             for member in ctx.guild.members:
-                if member.name == nickname:
+                if ' '.join(nickname).lower() == member.name.lower():
                     found = True
                     break
-            logging.info(found)
             if not found:
                 await ctx.message.delete()
                 await ctx.send(f"Could not find {nickname}")
                 return
+            with open(os.path.join('data', 'tiers.csv')) as csvfile:
+                tiers = dict(list(csv.reader(csvfile, delimiter='\t')))
+                tiers = {int(k):v for k, v in tiers.items()}
             points = 0
             for role in member.roles:
-                pts = role.name.strip('_').strip()[-1]
-                if pts.isdecimal():
-                    points = pts
+                if role.name.startswith('_Contributions'):
+                    points = role.name.strip('_').split()[-1]
             new_points = int(points)+int(plus)
             logging.info((points, new_points))
-            all_points = [role for role in member.roles\
-                          for member in ctx.message.guild.members\
-                          if role.name.isdecimal()]
-            if new_points not in all_points:
-                await ctx.guild.create_role(
-                    name=f"_Contributions: {new_points}_")
-                new_role = discord.utils.get(
-                    ctx.guild.roles, name=f"_Contributions: {new_points}_")
-                await member.add_roles(new_role)
-            if points:
-                old_role = discord.utils.get(
-                    ctx.guild.roles, name=f"_Contributions: {points}_")
+            all_points = [r.name for r in ctx.guild.roles\
+                          if r.name.startswith('_Contributions')]
+            logging.info(all_points)
+            old = f"_Contributions: {points}_"
+            new = f"_Contributions: {new_points}_"
+            old_role = discord.utils.get(ctx.guild.roles, name=old)
+            new_role = discord.utils.get(ctx.guild.roles, name=new)
+            if new_role is None:
+                await ctx.guild.create_role(name=new)
+                new_role = discord.utils.get(ctx.guild.roles, name=new)
+            await member.add_roles(new_role)
+            if old_role is not None:
                 await member.remove_roles(old_role)
-            all_points = [role for role in member.roles\
-                          for member in ctx.message.guild.members\
-                          if role.name.isdecimal()]
-            if points and points not in all_points:
-                role = discord.utils.get(
-                    ctx.guild.roles, name=f"_Contributions: {points}_")
-                await role.delete()
+            all_points = [r.name for r in ctx.guild.roles\
+                          if r.name.startswith('_Contributions')]
+            if old_role and old_role not in all_points:
+                await old_role.delete()
+            for i in range(int(points)+1, new_points+1):
+                if i in tiers:
+                    new_tier = tiers[i]
+                    role = discord.utils.get(ctx.guild.roles, name=new_tier)
+                    embed = discord.Embed(
+                        title="New Role Achieved!", color=role.color)
+                    embed.add_field(name="New Role", value=new_tier)
+                    await member.add_roles(new_role)
+                    await ctx.send(embed=embed)
 
 class MapBot(commands.Bot):
     def __init__(self, *, command_prefix, name, directory):
@@ -471,8 +494,8 @@ class Main:
         #Gather general data for each bot
         self.map_bots = ('The Skeld', 'Mira HQ', 'Polus')#, 'Airship')
         self.util_bots = ('Utils',)
-        with open(os.path.join('data', 'tokens.txt')) as jsonfile:
-            self.tokens = json.load(jsonfile)
+        with open(os.path.join('data', 'tokens.csv')) as csvfile:
+            self.tokens = dict(list(csv.reader(csvfile, delimiter='\t')))
 
         self.loop = asyncio.get_event_loop()
         #Create a MapBot-class bot for each Among Us map
