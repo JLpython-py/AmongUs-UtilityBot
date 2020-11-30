@@ -69,7 +69,7 @@ class UtilBot(commands.Bot):
                 Restrictions: #introductions
 '''
             #Ignore commands outside #introductions
-            if 'introductions' in ctx.message.channel.name:
+            if 'introductions' not in ctx.message.channel.name:
                 return
             #Parse message for a valid name
             regex = re.compile(r'^\*introduction(\s[A-Z][a-z]+){2}$')
@@ -93,8 +93,6 @@ class UtilBot(commands.Bot):
                 return
             else:
                 name = ' '.join(results.group().split()[-2:])
-                member = ctx.message.author
-                role = discord.utils.get(member.guild.roles, name="Member")
                 #Create and send an embed containing status information
                 embed = discord.Embed(
                     title="Confirm Introduction", color=0x00ff00)
@@ -107,6 +105,8 @@ class UtilBot(commands.Bot):
                     embed.add_field(name=field, value=fields[field])
                 await direct_message.send(embed=embed)
                 #Add 'Member' role to member
+                member = ctx.message.author
+                role = discord.utils.get(member.guild.roles, name="Member")
                 await member.add_roles(role)
             #Create and send new member information embed to #members channel
             embed = discord.Embed(
