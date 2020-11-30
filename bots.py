@@ -190,7 +190,7 @@ class UtilBot(commands.Bot):
             logging.info(points)
             current_tier, next_tier = 'None', 'Bronze Contributor'
             for t in list(tiers):
-                if t < points:
+                if t <= points:
                     current_tier = tiers[t]
                 elif t > points:
                     next_tier, until = tiers[t], t-points
@@ -234,10 +234,8 @@ class UtilBot(commands.Bot):
                 if role.name.startswith('_Contributions'):
                     points = role.name.strip('_').split()[-1]
             new_points = int(points)+int(plus)
-            logging.info((points, new_points))
             all_points = [r.name for r in ctx.guild.roles\
                           if r.name.startswith('_Contributions')]
-            logging.info(all_points)
             old = f"_Contributions: {points}_"
             new = f"_Contributions: {new_points}_"
             old_role = discord.utils.get(ctx.guild.roles, name=old)
@@ -258,7 +256,7 @@ class UtilBot(commands.Bot):
                     tier_role = discord.utils.get(
                         ctx.guild.roles, name=new_tier)
                     embed = discord.Embed(
-                        title="New Role Achieved!", color=role.color)
+                        title="New Role Achieved!", color=tier_role.color)
                     embed.add_field(name="New Role", value=new_tier)
                     embed.add_field(name="Granted to", value=member.name)
                     await member.add_roles(tier_role)
