@@ -17,8 +17,11 @@ class UtilBot(commands.Bot):
     def __init__(self, *, command_prefix, name):
         '''
 '''
+        intents = discord.Intents.default()
+        intents.members = True
         commands.Bot.__init__(
-            self, command_prefix=command_prefix, self_bot=False)
+            self, command_prefix=command_prefix, intents=intents,
+            self_bot=False)
         self.name = name
         self.execute_commands()
 
@@ -39,14 +42,14 @@ class UtilBot(commands.Bot):
         if 'Direct Message' in str(message.channel):
             await message.channel.send("Direct Messaging is not supported")
             return
-        with open(os.path.join('data', 'regex.txt')) as file:
-            regexes = dict([line.strip('\n').split('\t') for line in file])
+        with open(os.path.join('data', 'regex.csv')) as csvfile:
+            regexes = dict(list(csv.reader(csvfile, delimiter='\t')))
         for channel in regexes:
             if channel in message.channel.name:
                 break
         regex = re.compile(regexes[channel])
-        results = regex.findall(message.content)
-        if not results:
+        results = regex.search(message.content)
+        if results is None:
             await message.delete()
             return
         await self.process_commands(message)
@@ -66,7 +69,7 @@ class UtilBot(commands.Bot):
                 Restrictions: #introductions
 '''
             #Ignore commands outside #introductions
-            if ctx.message.channel.name != 'introductions':
+            if 'introductions' in ctx.message.channel.name:
                 return
             #Parse message for a valid name
             regex = re.compile(r'^\*introduction(\s[A-Z][a-z]+){2}$')
@@ -105,12 +108,6 @@ class UtilBot(commands.Bot):
                 await direct_message.send(embed=embed)
                 #Add 'Member' role to member
                 await member.add_roles(role)
-            #Write information to members.txt to be referenced
-            with open(os.path.join('data', 'members.txt'), 'r') as jsonfile:
-                data = json.load(jsonfile)
-                data[member.name] = name
-            with open(os.path.join('data', 'members.txt'), 'w') as jsonfile:
-                json.dump(data, jsonfile)
             #Create and send new member information embed to #members channel
             embed = discord.Embed(
                 title="Member Information Card", color=0xffff00)
@@ -119,61 +116,40 @@ class UtilBot(commands.Bot):
                 "Name": name}
             for field in fields:
                 embed.add_field(name=field, value=fields[field])
-            channel = discord.utils.get(ctx.guild.channels, name="members")
+            channel = discord.utils.get(
+                ctx.guild.channels, name="members")
             await channel.send(embed=embed)
 
-        @self.command(name="member_name", pass_context=True)
-        async def member_name(ctx, nickname):
-            ''' Command: *member_name nickname
-                Return Embed Values:
-                - Member nickname
-                - Member name
-                Restridctions: #members
+        @self.command(name="member", pass_context=True)
+        async def member(ctx, search_method, *member):
+            '''
 '''
-            #Ignore commands outside #members
-            if ctx.message.channel.name != 'members':
+            channel = self.get_channel(780599994360397825)
+            messages = await channel.history(limit=200).flatten()
+            if search_method == 'Name':
+                search = ' '.join(member)
+            elif search_method == 'Nickname':
+                search = member[0]
+            found = False
+            for message in messages[::-1]:
+                logging.info(message)
+                nickname = message.author.name
+                name = ' '.join(message.content.split()[-2:])
+                if search in message.content:
+                    if search_method == 'Name':
+                        name = search
+                    elif search_method == 'Nickname':
+                        nickname = search
+                    found = True
+                    break
+            if not found:
+                await ctx.send(
+                    f"Could not find {member} [Search by {search_method}]")
                 return
-            #Convert data to nickname:name dictionary
-            with open(os.path.join('data', 'members.txt')) as jsonfile:
-                data = json.load(jsonfile)
-            #Assert that nickname is on file
-            if nickname not in data:
-                await ctx.message.delete()
-                await ctx.send(f"{nickname} could not be found")
-                return
-            #Create and send member information embed
             embed = discord.Embed(
                 title="Member Information Card", color=0xffff00)
             embed.add_field(name="Nickname", value=nickname)
-            embed.add_field(name="Name", value=data.get(nickname))
-            await ctx.send(embed=embed)
-
-        @self.command(name="member_nickname", pass_context=True)
-        async def member_nickname(ctx, *name):
-            ''' Command: *member_nickname name
-                Return Embed Values:
-                - Member nickname
-                - Member name
-                Restrictions: #members
-'''
-            #Ignore commands outside #members
-            if ctx.message.channel.name != 'members':
-                return
-            name = ' '.join(name).title()
-            #Convert data to name:nickname dictionary
-            with open(os.path.join('data', 'members.txt')) as jsonfile:
-                data = {v:k for k, v in json.load(jsonfile).items()}
-            #Assert that name is on file
-            if name not in data:
-                await ctx.message.delete()
-                await ctx.send(f"{name} could not be found")
-                return
-            #Create and send member informatio embed
-            embed = discord.Embed(
-                title="Member Information Card", color=0xffff00)
-            embed.add_field(name="Nickname", value=data.get(name))
             embed.add_field(name="Name", value=name)
-            await ctx.message.delete()
             await ctx.send(embed=embed)
 
         @self.command(name="suggestion", pass_context=True)
@@ -198,6 +174,93 @@ class UtilBot(commands.Bot):
                 "<:Report:777211184881467462"]
             for emoji in reactions:
                 await ctx.message.add_reaction(emoji)
+
+        @self.command(name="get_points", pass_context=True)
+        async def get_points(ctx):
+            '''
+'''
+            with open(os.path.join('data', 'tiers.csv')) as csvfile:
+                tiers = dict(list(csv.reader(csvfile, delimiter='\t')))
+                tiers = {int(k):v for k, v in tiers.items()}
+            points = 0
+            for role in ctx.author.roles:
+                if '_Contributions' in role.name:
+                    points = int(role.name.strip('_').split()[-1])
+                    break
+            logging.info(points)
+            current_tier, next_tier = 'None', 'Bronze Contributor'
+            for t in list(tiers):
+                if t < points:
+                    current_tier = tiers[t]
+                elif t > points:
+                    next_tier, until = tiers[t], t-points
+                    break
+            if points >= 100:
+                next_tier, until = '---', '---'
+            role = discord.utils.get(ctx.guild.roles, name=current_tier)
+            color = 0x000000 if role is None else role.color
+            fields = {
+                "Points": points,
+                "Current Tier": current_tier,
+                "Next Tier": next_tier,
+                "Points until next tier": until}
+            embed = discord.Embed(title=ctx.author.name, color=color)
+            for field in fields:
+                embed.add_field(name=field, value=fields[field])
+            await ctx.send(embed=embed)
+
+        @self.command(name="give_points", pass_context=True)
+        async def give_points(ctx, plus, *nickname):
+            '''
+'''
+            if "Developer" not in [r.name for r in ctx.author.roles]:
+                await ctx.message.delete()
+                await ctx.send("You are not authorized to use this command")
+                return
+            found = False
+            for member in ctx.guild.members:
+                if ' '.join(nickname).lower() == member.name.lower():
+                    found = True
+                    break
+            if not found:
+                await ctx.message.delete()
+                await ctx.send(f"Could not find {nickname}")
+                return
+            with open(os.path.join('data', 'tiers.csv')) as csvfile:
+                tiers = dict(list(csv.reader(csvfile, delimiter='\t')))
+                tiers = {int(k):v for k, v in tiers.items()}
+            points = 0
+            for role in member.roles:
+                if role.name.startswith('_Contributions'):
+                    points = role.name.strip('_').split()[-1]
+            new_points = int(points)+int(plus)
+            logging.info((points, new_points))
+            all_points = [r.name for r in ctx.guild.roles\
+                          if r.name.startswith('_Contributions')]
+            logging.info(all_points)
+            old = f"_Contributions: {points}_"
+            new = f"_Contributions: {new_points}_"
+            old_role = discord.utils.get(ctx.guild.roles, name=old)
+            new_role = discord.utils.get(ctx.guild.roles, name=new)
+            if new_role is None:
+                await ctx.guild.create_role(name=new)
+                new_role = discord.utils.get(ctx.guild.roles, name=new)
+            await member.add_roles(new_role)
+            if old_role is not None:
+                await member.remove_roles(old_role)
+            all_points = [r.name for r in ctx.guild.roles\
+                          if r.name.startswith('_Contributions')]
+            if old_role and old_role not in all_points:
+                await old_role.delete()
+            for i in range(int(points)+1, new_points+1):
+                if i in tiers:
+                    new_tier = tiers[i]
+                    role = discord.utils.get(ctx.guild.roles, name=new_tier)
+                    embed = discord.Embed(
+                        title="New Role Achieved!", color=role.color)
+                    embed.add_field(name="New Role", value=new_tier)
+                    await member.add_roles(new_role)
+                    await ctx.send(embed=embed)
 
 class MapBot(commands.Bot):
     def __init__(self, *, command_prefix, name, directory):
@@ -245,9 +308,17 @@ class MapBot(commands.Bot):
 '''
             embed = discord.Embed(title="Map", color=0x0000ff)
             file = discord.File(
-                os.path.join('data', self.directory, "map.jpg"),
-                "map.jpg")
-            embed.set_image(url="attachment://map.jpg")
+                os.path.join('data', self.directory, "Map.jpg"),
+                "Map.jpg")
+            embed.set_image(url="attachment://Map.jpg")
+            await ctx.send(file=file, embed=embed)
+
+        async def sabotage_map(ctx):
+            embed = discord.Embed(title="Sabotage Map", color=0x0000ff)
+            file = discord.File(
+                os.path.join('data', self.directory, "Sabotage Map.jpg"),
+                "Sabotage Map.jpg")
+            embed.set_image(url="attachment://Sabotage Map.jpg")
             await ctx.send(file=file, embed=embed)
 
         @self.command(name="tasks", pass_context=True)
@@ -423,8 +494,8 @@ class Main:
         #Gather general data for each bot
         self.map_bots = ('The Skeld', 'Mira HQ', 'Polus')#, 'Airship')
         self.util_bots = ('Utils',)
-        with open(os.path.join('data', 'tokens.txt')) as jsonfile:
-            self.tokens = json.load(jsonfile)
+        with open(os.path.join('data', 'tokens.csv')) as csvfile:
+            self.tokens = dict(list(csv.reader(csvfile, delimiter='\t')))
 
         self.loop = asyncio.get_event_loop()
         #Create a MapBot-class bot for each Among Us map
