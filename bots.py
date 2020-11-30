@@ -255,11 +255,13 @@ class UtilBot(commands.Bot):
             for i in range(int(points)+1, new_points+1):
                 if i in tiers:
                     new_tier = tiers[i]
-                    role = discord.utils.get(ctx.guild.roles, name=new_tier)
+                    tier_role = discord.utils.get(
+                        ctx.guild.roles, name=new_tier)
                     embed = discord.Embed(
                         title="New Role Achieved!", color=role.color)
                     embed.add_field(name="New Role", value=new_tier)
-                    await member.add_roles(new_role)
+                    embed.add_field(name="Granted to", value=member.name)
+                    await member.add_roles(tier_role)
                     await ctx.send(embed=embed)
 
 class MapBot(commands.Bot):
