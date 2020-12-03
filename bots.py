@@ -13,7 +13,7 @@ from discord.ext import commands
 
 logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(levelname)s - %(message)s')
 
-class UtilBot(commands.Bot):
+class UtilityBot(commands.Bot):
     def __init__(self, *, command_prefix, name):
         '''
 '''
@@ -23,6 +23,11 @@ class UtilBot(commands.Bot):
             self, command_prefix=command_prefix, intents=intents,
             self_bot=False)
         self.name = name
+        with open(os.path.join('data', 'regex.csv')) as file:
+            self.regexes = dict(list(csv.reader(file, delimiter='\t')))
+        with open(os.path.join('data', 'tiers.csv')) as file:
+            self.tiers = dict(list(csv.reader(file, delimiter='\t')))
+            self.tiers = {v:int(k) for k, v in self.tiers.items()}
         self.execute_commands()
 
     async def on_ready(self):
@@ -32,68 +37,75 @@ class UtilBot(commands.Bot):
 
     async def on_message(self, message):
         ''' Messages from certain channels are run through a regex
-            Messages that do not comply to the regex are considered spam
-            Spam messages are deleted
+            Messages that do not comply to the regex are deleted
 '''
         logging.info((message.author.name, message.channel, message.content))
         #Ignore all bot messages
         if message.author.bot:
             return
         if 'Direct Message' in str(message.channel):
-            await message.channel.send("Direct Messaging is not supported")
+            embed = discord.Embed(
+                title="Direct Messaging is not supported", color=0xff000)
+            ctx.send(embed=embed)
             return
-        with open(os.path.join('data', 'regex.csv')) as csvfile:
-            regexes = dict(list(csv.reader(csvfile, delimiter='\t')))
-        for channel in regexes:
+        for channel in self.regexes:
             if channel in message.channel.name:
                 break
-        regex = re.compile(regexes[channel])
+        regex = re.compile(self.regexes[channel])
         results = regex.search(message.content)
-        if results is None:
+        if results is not None or 'help' in message.content:
+            await self.process_commands(message)
+        else:
             await message.delete()
             return
-        await self.process_commands(message)
 
     def execute_commands(self):
-        ''' UtilBot-class bot commands which can be used by members
+        ''' Bot commands which can be used by users with the 'Member' role
 '''
         @self.command(name="introduction", pass_context=True)
-        async def introduction(ctx):
-            ''' Command: *introduction Firstname Lastname
-                Return Embed Values:
+        async def introduction(ctx, name):
+            ''' Returned embed values:
                 - Member nickname
                 - Member name
-                Other Return Values:
+                Other return values:
                 - User is granted Member role
-                - Information is stored for other Members to reference
-                Restrictions: #introductions
+                Restricted to: #introductions
 '''
-            #Ignore commands outside #introductions
+            #Ignore commands outside #introductions and #v-introductions
             if 'introductions' not in ctx.message.channel.name:
                 return
-            #Parse message for a valid name
-            regex = re.compile(r'^\*introduction(\s[A-Z][a-z]+){2}$')
-            results = regex.search(ctx.message.content)
+            #Parse 'name' argument for a valid name
+            regex = re.compile(r'^[A-Z][A-Za-z]+ [A-Z][A-Za-z]+$')
+            results = regex.search(name)
             #Create a direct message to notify member of message status
             direct_message = await ctx.message.author.create_dm()
             if results is None:
-                #Create and send an embed containing status information
+                #Create an embed containing status information
                 embed = discord.Embed(
                     title="Invalid Introduction", color=0x00ff00)
                 fileds = {
                     "Error": "Name not detected in entry",
-                    "Acceptable Format": "^\*introduction(\s[A-Z][a-z]+){2}$",
+                    "Acceptable Format": "^[A-Z][A-Za-z]+ [A-Z][A-Za-z]+$",
                     "Example": "Among Us",
                     "Not": "AMONG US, AmongUs, among us, amongus"}
-                for field in fields:
-                    embed.add_field(name=field, value=fields[field])
-                await direct_message.send(embed=embed)
                 #Delete invalid command
                 await ctx.message.delete()
-                return
             else:
-                name = ' '.join(results.group().split()[-2:])
-                #Create and send an embed containing status information
+                name = results.group()
+                #Add 'Member' role to member
+                member = ctx.message.author
+                role = discord.utils.get(member.guild.roles, name="Member")
+                await member.add_roles(role)
+                #Create and send new member information embed to #members channel
+                embed = discord.Embed(
+                    title="Member Information Card", color=0xffff00)
+                information = {"Nickname": member.name, "Name": name}
+                for info in information:
+                    embed.add_field(name=info, value=information[info])
+                channel = discord.utils.get(
+                    ctx.guild.channels, name="members")
+                await channel.send(embed=embed)
+                #Create an embed containing status information
                 embed = discord.Embed(
                     title="Confirm Introduction", color=0x00ff00)
                 fields = {
@@ -101,40 +113,36 @@ class UtilBot(commands.Bot):
                     "Role": "You have now been granted the 'Member' role",
                     "Status": "You can now view the rest of the server",
                     "Typo?": "Run this command to override previous entries"}
-                for field in fields:
-                    embed.add_field(name=field, value=fields[field])
-                await direct_message.send(embed=embed)
-                #Add 'Member' role to member
-                member = ctx.message.author
-                role = discord.utils.get(member.guild.roles, name="Member")
-                await member.add_roles(role)
-            #Create and send new member information embed to #members channel
-            embed = discord.Embed(
-                title="Member Information Card", color=0xffff00)
-            fields = {
-                "Nickname": member.name,
-                "Name": name}
+            #Direct message the status embed
             for field in fields:
                 embed.add_field(name=field, value=fields[field])
-            channel = discord.utils.get(
-                ctx.guild.channels, name="members")
-            await channel.send(embed=embed)
+            await direct_message.send(embed=embed)
 
         @self.command(name="member", pass_context=True)
-        async def member(ctx, search_method, *member):
-            '''
+        async def member(ctx, search_method, search):
+            ''' Search for a member of the guild by their name or nickname
+                Returned embed values:
+                - Member nickname
+                - Member name
 '''
-            channel = self.get_channel(780599994360397825)
+            #Assert that the search is either by Name or Nickname
+            search_method = search_method.title()
+            if search_method not in ('Name', 'Nickname'):
+                await ctx.send(f"{search_method} is not a valid search method")
+                return
+            #Parse 'member' argument for a valid name/nickname
+            regex = re.compile(r'^[A-Z][A-Za-z]+ [A-Z][A-Za-z]+$|.*{1,32}')
+            results = regex.search(member)
+            channel = discord.utils.get(
+                ctx.guild.channels, name="introductions")
+            #Parse through the last 200 messages from newest to oldest
             messages = await channel.history(limit=200).flatten()
-            if search_method == 'Name':
-                search = ' '.join(member)
-            elif search_method == 'Nickname':
-                search = member[0]
             found = False
             for message in messages[::-1]:
-                logging.info(message)
+                #Use a RegEx to find the name in the introduction
+                name_re = re.compile(r'"?([A-Z][A-Za-z]+\s[A-Z][A-Za-z]+)"?')
                 nickname = message.author.name
-                name = ' '.join(message.content.split()[-2:])
+                name = name_re.search(message.content).group(1)
                 if search in message.content:
                     if search_method == 'Name':
                         name = search
@@ -144,8 +152,9 @@ class UtilBot(commands.Bot):
                     break
             if not found:
                 await ctx.send(
-                    f"Could not find {member} [Search by {search_method}]")
+                    f"Could not find {member} [Searched by {search_method}]")
                 return
+            #Create and send member information embed
             embed = discord.Embed(
                 title="Member Information Card", color=0xffff00)
             embed.add_field(name="Nickname", value=nickname)
@@ -153,114 +162,216 @@ class UtilBot(commands.Bot):
             await ctx.send(embed=embed)
 
         @self.command(name="suggestion", pass_context=True)
-        async def suggestion(ctx, *suggestion):
-            ''' Command: *suggestion Suggestion goes here
+        async def suggestion(ctx):
+            ''' Suggest a feature for the guild or for the bots
+                Return values:
+                - :Victory: and :Defeat: reactions for members to vote with
 '''
+            #Ignore command if outside #suggestions-and-bugs
             if ctx.message.channel.name != 'suggestions-and-bugs':
                 return
-            reactions = [
-                "<:Victory:779396489792847892>",
-                "<:Defeat:779396491667963904>"]
+            #React to the message with emojis to allow members to vote
+            reactions = ["<:Victory:779396489792847892>",
+                         "<:Defeat:779396491667963904>"]
             for emoji in reactions:
                 await ctx.message.add_reaction(emoji)
 
         @self.command(name="bug", pass_context=True)
-        async def bug(ctx, *bug):
-            ''' Command: *bug Bug goes here
+        async def bug(ctx):
+            ''' Report a bug in the bots
+                Return values:
+                - :Report: reaction for members to report the bug
 '''
+            #Ignore command if outside #suggestions-and-bugs
             if ctx.message.channel.name != 'suggestions-and-bugs':
                 return
-            reactions = [
-                "<:Report:777211184881467462"]
+            #React to message with emojis to allow members to report
+            reactions = ["<:Report:777211184881467462"]
             for emoji in reactions:
                 await ctx.message.add_reaction(emoji)
 
         @self.command(name="get_points", pass_context=True)
         async def get_points(ctx):
-            '''
+            ''' Get the number of guild points
+                Returned embed values:
+                - Number of points
+                - Current tier name
+                - Next tier name
+                - Number of points until the next tier
 '''
-            with open(os.path.join('data', 'tiers.csv')) as csvfile:
-                tiers = dict(list(csv.reader(csvfile, delimiter='\t')))
-                tiers = {int(k):v for k, v in tiers.items()}
+            #Parse through member roles to get points
             points = 0
             for role in ctx.author.roles:
                 if '_Contributions' in role.name:
                     points = int(role.name.strip('_').split()[-1])
                     break
-            logging.info(points)
+            #Parse through dictionary to get tier information from points
             current_tier, next_tier = 'None', 'Bronze Contributor'
-            for t in list(tiers):
+            for t in list(self.tiers):
                 if t <= points:
-                    current_tier = tiers[t]
+                    current_tier = self.tiers[t]
                 elif t > points:
-                    next_tier, until = tiers[t], t-points
+                    next_tier, until = self.tiers[t], t-points
                     break
             if points >= 100:
                 next_tier, until = '---', '---'
+            #Create and send an embed containing point and tier information
             role = discord.utils.get(ctx.guild.roles, name=current_tier)
             color = 0x000000 if role is None else role.color
             fields = {
-                "Points": points,
-                "Current Tier": current_tier,
-                "Next Tier": next_tier,
-                "Points until next tier": until}
+                "Points": points, "Current Tier": current_tier,
+                "Next Tier": next_tier, "Points until next tier": until}
             embed = discord.Embed(title=ctx.author.name, color=color)
             for field in fields:
                 embed.add_field(name=field, value=fields[field])
             await ctx.send(embed=embed)
 
         @self.command(name="give_points", pass_context=True)
-        async def give_points(ctx, plus, *nickname):
-            '''
+        async def give_points(ctx, plus, nickname):
+            ''' Give guild points to a user
 '''
-            if "Developer" not in [r.name for r in ctx.author.roles]:
+            #Restrict point-giving privelage to 'Moderator'
+            if "Moderator" not in [r.name for r in ctx.author.roles]:
                 await ctx.message.delete()
                 await ctx.send("You are not authorized to use this command")
                 return
+            #Find the member in all guild members by nickname
             found = False
             for member in ctx.guild.members:
-                if ' '.join(nickname).lower() == member.name.lower():
+                if nickname.lower() == member.name.lower():
                     found = True
                     break
             if not found:
                 await ctx.message.delete()
                 await ctx.send(f"Could not find {nickname}")
                 return
-            with open(os.path.join('data', 'tiers.csv')) as csvfile:
-                tiers = dict(list(csv.reader(csvfile, delimiter='\t')))
-                tiers = {int(k):v for k, v in tiers.items()}
+            #Use a RegEx to find the number of points from the role
+            role_regex = re.compile('_Contributions: ([0-9]+)_')
+            #Parse through member roles to get points
             points = 0
             for role in member.roles:
-                if role.name.startswith('_Contributions'):
-                    points = role.name.strip('_').split()[-1]
-            new_points = int(points)+int(plus)
-            all_points = [r.name for r in ctx.guild.roles\
-                          if r.name.startswith('_Contributions')]
+                if role_regex.search(role.name):
+                    points = role_regex.search(role.name).group(1)
+            new_points, points = int(points)+int(plus), int(points)
+            #Generate roles for the new and old number of points
             old = f"_Contributions: {points}_"
             new = f"_Contributions: {new_points}_"
             old_role = discord.utils.get(ctx.guild.roles, name=old)
             new_role = discord.utils.get(ctx.guild.roles, name=new)
+            #Create new role if does not already exist
             if new_role is None:
                 await ctx.guild.create_role(name=new)
                 new_role = discord.utils.get(ctx.guild.roles, name=new)
+            #Add new role and remove old role to member, if possible
             await member.add_roles(new_role)
             if old_role is not None:
                 await member.remove_roles(old_role)
+            #Delete old role if it exists and no one else owns it
             all_points = [r.name for r in ctx.guild.roles\
-                          if r.name.startswith('_Contributions')]
+                          if role_regex.search(r.name) is not None]
             if old_role and old_role not in all_points:
                 await old_role.delete()
+            #Check if the member has reached a new tier
             for i in range(int(points)+1, new_points+1):
                 if i in tiers:
-                    new_tier = tiers[i]
+                    #Get tier which the member just reached
+                    new_tier = self.tiers[i]
                     tier_role = discord.utils.get(
                         ctx.guild.roles, name=new_tier)
+                    #Create and send an embed congratulating them
                     embed = discord.Embed(
                         title="New Role Achieved!", color=tier_role.color)
                     embed.add_field(name="New Role", value=new_tier)
                     embed.add_field(name="Granted to", value=member.name)
                     await member.add_roles(tier_role)
                     await ctx.send(embed=embed)
+
+        @self.command(name="claim", pass_context=True)
+        async def claim(ctx, voice_channel):
+            ''' Claim control of a voice channel in Game Lobbies
+'''
+            #Get channel and assert that it exists in the guild
+            channel = discord.utils.get(
+                ctx.guild.channels, name=voice_channel)
+            if channel is None or channel.category.name != "Game Lobbies":
+                await ctx.send("You cannot claim that voice channel")
+                return
+            #Use a RegEx to check if user has already claimed a game lobby
+            regex = re.compile(r"_Claimed: (Lobby [0-9])_")
+            for role in ctx.author.roles:
+                if regex.search(role.name) is None:
+                    continue
+                if regex.search(role.name).group(1) == voice_channel:
+                    await ctx.send(f"You have already claimed {voice_channel}")
+                    return
+                await ctx.send("You cannot claim multiple game lobbies")
+                return
+            #Generate a role identifying the game lobby which was claimed
+            claim_rname = f"_Claimed: {channel}_"
+            if claim_rname in [r.name for r in ctx.guild.roles]:
+                await ctx.send("This channel has already been claimed")
+                return
+            #Create the role and award it to the user
+            await ctx.guild.create_role(name=claim_rname)
+            claim_role = discord.utils.get(
+                ctx.guild.roles, name=claim_rname)
+            await ctx.message.author.add_roles(claim_role)
+
+        @self.command(name="surrender", pass_context=True)
+        async def surrender(ctx):
+            ''' Surrender control of a voice channel in Game Lobbies
+'''
+            #Assert that the user has claimed a lobby
+            regex, claimed = re.compile(r"_Claimed: (Lobby [0-9])_"), False
+            for role in ctx.message.author.roles:
+                if regex.search(role.name):
+                    claimed = True
+                    break
+            if not claimed:
+                await ctx.send("You have not claimed any of the game lobbies")
+                return
+            #Get the role of the claimed game lobby and delete the role
+            claim_rname = regex.search(role.name).group()
+            claim_role = discord.utils.get(ctx.guild.roles, name=claim_rname)
+            await claim_role.delete()
+
+        @self.command(name="claimed", pass_context=True)
+        async def claimed(ctx):
+            ''' Check which voice channels in Game Lobbies have been claimed
+'''
+            #Parse through all the channels in Game Lobbies
+            category = discord.utils.get(
+                ctx.guild.categories, name="Game Lobbies")
+            claimed = []
+            for channel in category.channels:
+                #Check if the claimed game lobby role exists
+                claim_rname = f"_Claimed: {channel.name}_"
+                if claim_rname in [r.name for r in ctx.guild.roles]:
+                    claimed.append(channel.name)
+            #Report any claimed game lobbies
+            if not claimed:
+                await ctx.send("No game lobbies are currently claimed")
+            else:
+                await ctx.send(f"Claimed game lobbies: {claimed}")
+
+        @self.command(name="manage_mute", pass_context=True)
+        async def manage_mute(ctx):
+            ''' Mute all the users in a voice channel in Game Lobbies
+'''
+            #Use a RegEx to assert that the user has claimed a lobby
+            regex, claimed = re.compile(r"_Claimed: (Lobby [0-9])_"), False
+            for role in ctx.message.author.roles:
+                if regex.search(role.name):
+                    claimed = True
+                    break
+            if not claimed:
+                await ctx.send("You have not claimed any of the game lobbies")
+                return
+            #Get the claimed voice channel and mute/unmute all users in it
+            voice_channel = discord.utils.get(
+                ctx.guild.channels, name=regex.search(role.name).group(1))
+            for member in voice_channel.members:
+                await member.edit(mute=not member.voice.mute)
 
 class MapBot(commands.Bot):
     def __init__(self, *, command_prefix, name, directory):
@@ -284,8 +395,8 @@ class MapBot(commands.Bot):
         ''' Read CSV data for each map
 '''
         for category in self.files:
-            with open(self.files[category]) as csvfile:
-                data = list(csv.reader(csvfile, delimiter='\t'))
+            with open(self.files[category]) as file:
+                data = list(csv.reader(file, delimiter='\t'))
                 headings = data.pop(0)
             self.data[category] = {}
             for row in data:
@@ -308,17 +419,17 @@ class MapBot(commands.Bot):
 '''
             embed = discord.Embed(title="Map", color=0x0000ff)
             file = discord.File(
-                os.path.join('data', self.directory, "Map.jpg"),
-                "Map.jpg")
-            embed.set_image(url="attachment://Map.jpg")
+                os.path.join('data', self.directory, "Map.png"),
+                "Map.png")
+            embed.set_image(url="attachment://Map.png")
             await ctx.send(file=file, embed=embed)
 
         async def sabotage_map(ctx):
             embed = discord.Embed(title="Sabotage Map", color=0x0000ff)
             file = discord.File(
-                os.path.join('data', self.directory, "Sabotage Map.jpg"),
-                "Sabotage Map.jpg")
-            embed.set_image(url="attachment://Sabotage Map.jpg")
+                os.path.join('data', self.directory, "Sabotage Map.png"),
+                "Sabotage Map.png")
+            embed.set_image(url="attachment://Sabotage Map.png")
             await ctx.send(file=file, embed=embed)
 
         @self.command(name="tasks", pass_context=True)
@@ -485,7 +596,12 @@ class MapBot(commands.Bot):
             embed = discord.Embed(title=f"Action: {action}", color=0x0000ff)
             for aspect in data:
                 embed.add_field(name=aspect, value=data[aspect])
-            await ctx.send(embed=embed)
+            filename = f"{data['Name']}.png"
+            file = discord.File(
+                os.path.join('data', self.directory, 'actions', filename),
+                filename)
+            embed.set_image(url=f"attachment://{filename}")
+            await ctx.send(file=file, embed=embed)
 
 class Main:
     def __init__(self):
@@ -494,8 +610,19 @@ class Main:
         #Gather general data for each bot
         self.map_bots = ('The Skeld', 'Mira HQ', 'Polus')#, 'Airship')
         self.util_bots = ('Utils',)
-        with open(os.path.join('data', 'tokens.csv')) as csvfile:
-            self.tokens = dict(list(csv.reader(csvfile, delimiter='\t')))
+        token_file = os.path.join('data', 'tokens.csv')
+        if os.path.exists(token_file):
+            logging.info("Running on token CSV files")
+            with open(token_file) as file:
+                self.tokens = dict(list(csv.reader(file, delimiter='\t')))
+        else:
+            logging.info("Running on Config Variables")
+            self.tokens = {
+                #'Airship': process.env.AIRSHIP,
+                'Mira HQ': os.environ.get('MIRAHQ', None),
+                'Polus': os.environ.get('POLUS', None),
+                'The Skeld': os.environ.get('THESKELD', None),
+                'Utils': os.environ.get('UTILS', None)}
 
         self.loop = asyncio.get_event_loop()
         #Create a MapBot-class bot for each Among Us map
@@ -506,7 +633,7 @@ class Main:
             self.loop.create_task(discord_bot.start(self.tokens[bot]))
         #Create a UtilBot-class bot for the Among Us server
         for bot in self.util_bots:
-            discord_bot = UtilBot(
+            discord_bot = UtilityBot(
                 command_prefix="*", name=bot)
             self.loop.create_task(discord_bot.start(self.tokens[bot]))
         self.loop.run_forever()
