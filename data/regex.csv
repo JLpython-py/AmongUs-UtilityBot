@@ -5,10 +5,11 @@ server_announcements	.*
 among-us-announcements	.*
 general	.*
 memes	.*
+suggestions-and-bugs	^\*(suggestion|bug|get_points|give_points)
 game-chat	.*
 game-codes	^[A-Za-z]{6}$
 strategy	.*
 clips-and-highlights	.*
-mapbot-commands	^(MiraHQ|Polus|TheSkeld)\.
-suggestions-and-bugs	^\*(suggestion|bug|get_points|give_points)
+map-bots	^(MiraHQ|Polus|TheSkeld)\.
+utility-bots	^\*(claim|surrender|manage_mute|mm|claimed)
 dev-build	.*

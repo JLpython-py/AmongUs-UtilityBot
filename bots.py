@@ -59,6 +59,28 @@ class UtilityBot(commands.Bot):
             await message.delete()
             return
 
+    async def on_voice_state_update(self, member, before, after):
+        regex, claimed = re.compile(r"_Claimed: (Lobby [0-9])_"), False
+        for role in member.roles:
+            if regex.search(role.name):
+                voice_channel = regex.search(role.name).group(1)
+                claimed = True
+                break
+        if not claimed or not (before.channel and after.channel is None):
+            return
+        direct_message = await member.create_dm()
+        embed = discord.Embed(
+            title="Surrender Game Lobby Claim", color=0x00ff00)
+        fields = {
+            "Details": '\n'.join([
+                f"You recently disconnected from {voice_channel}.",
+                "If you are still using this lobby, ignore this message.",
+                "If not, please surrender your claim on this lobby."]),
+            "Surrender Claim": "Use command 'surrender' in #utility-bots"}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        await direct_message.send(embed=embed)
+
     def execute_commands(self):
         ''' Bot commands which can be used by users with the 'Member' role
 '''
@@ -83,7 +105,7 @@ class UtilityBot(commands.Bot):
                 #Create an embed containing status information
                 embed = discord.Embed(
                     title="Invalid Introduction", color=0x00ff00)
-                fileds = {
+                fields = {
                     "Error": "Name not detected in entry",
                     "Acceptable Format": "^[A-Z][A-Za-z]+ [A-Z][A-Za-z]+$",
                     "Example": "Among Us",
@@ -287,12 +309,12 @@ class UtilityBot(commands.Bot):
                     await ctx.send(embed=embed)
 
         @self.command(name="claim", pass_context=True)
-        async def claim(ctx, voice_channel):
+        async def claim(ctx, lobby):
             ''' Claim control of a voice channel in Game Lobbies
 '''
             #Get channel and assert that it exists in the guild
             channel = discord.utils.get(
-                ctx.guild.channels, name=voice_channel)
+                ctx.guild.channels, name=lobby)
             if channel is None or channel.category.name != "Game Lobbies":
                 await ctx.send("You cannot claim that voice channel")
                 return
@@ -301,7 +323,7 @@ class UtilityBot(commands.Bot):
             for role in ctx.author.roles:
                 if regex.search(role.name) is None:
                     continue
-                if regex.search(role.name).group(1) == voice_channel:
+                if regex.search(role.name).group(1) == lobby:
                     await ctx.send(f"You have already claimed {voice_channel}")
                     return
                 await ctx.send("You cannot claim multiple game lobbies")
@@ -316,6 +338,23 @@ class UtilityBot(commands.Bot):
             claim_role = discord.utils.get(
                 ctx.guild.roles, name=claim_rname)
             await ctx.message.author.add_roles(claim_role)
+            #Notify user that the game lobby has been claimed
+            direct_message = await ctx.message.author.create_dm()
+            embed = discord.Embed(title="Game Lobby claimed", color=0x00ff00)
+            fields = {
+                "Claimed": f"You have successfully claimed {lobby}",
+                "Mute/Unmute": '\n'.join([
+                    f"You can now control the voices of others in {lobby}",
+                    "Use 'manage_mute' or 'mm' in #utility-bots"]),
+                "Role": '\n'.join([
+                    f"You now have the '\{claim_rname}' role",
+                    f"This identifies your claim on {lobby}"]),
+                "Surrender": '\n'.join([
+                    "Please surrender your claim when you are finished",
+                    "Use 'surrender' in #utility-bots"])}
+            for field in fields:
+                embed.add_field(name=field, value=fields[field])
+            await direct_message.send(embed=embed)
 
         @self.command(name="surrender", pass_context=True)
         async def surrender(ctx):
@@ -325,6 +364,7 @@ class UtilityBot(commands.Bot):
             regex, claimed = re.compile(r"_Claimed: (Lobby [0-9])_"), False
             for role in ctx.message.author.roles:
                 if regex.search(role.name):
+                    lobby = regex.search(role.name).group(1)
                     claimed = True
                     break
             if not claimed:
@@ -334,6 +374,15 @@ class UtilityBot(commands.Bot):
             claim_rname = regex.search(role.name).group()
             claim_role = discord.utils.get(ctx.guild.roles, name=claim_rname)
             await claim_role.delete()
+            #Notify user that the game lobby has been surrendered
+            direct_message = await ctx.message.author.create_dm()
+            embed = discord.Embed(
+                title="Game Lobby surrendered", color=0x00ff00)
+            fields = {
+                "Surrendered": f"You have successfully surrendered {lobby}"}
+            for field in fields:
+                embed.add_field(name=field, value=fields[field])
+            await direct_message.send(embed=embed)
 
         @self.command(name="claimed", pass_context=True)
         async def claimed(ctx):
@@ -354,7 +403,7 @@ class UtilityBot(commands.Bot):
             else:
                 await ctx.send(f"Claimed game lobbies: {claimed}")
 
-        @self.command(name="manage_mute", pass_context=True)
+        @self.command(name="manage_mute", pass_context=True, aliases=['mm'])
         async def manage_mute(ctx):
             ''' Mute all the users in a voice channel in Game Lobbies
 '''
@@ -368,10 +417,15 @@ class UtilityBot(commands.Bot):
                 await ctx.send("You have not claimed any of the game lobbies")
                 return
             #Get the claimed voice channel and mute/unmute all users in it
-            voice_channel = discord.utils.get(
+            lobby = discord.utils.get(
                 ctx.guild.channels, name=regex.search(role.name).group(1))
-            for member in voice_channel.members:
+            if not lobby.members:
+                await ctx.send(f"There are no members to mute/unmute")
+                return
+            for member in lobby.members:
                 await member.edit(mute=not member.voice.mute)
+            status = "muted" if member.voice.mute else "unmuted"
+            await ctx.send(f"The members in {lobby} have been {status}")
 
 class MapBot(commands.Bot):
     def __init__(self, *, command_prefix, name, directory):
@@ -413,9 +467,7 @@ class MapBot(commands.Bot):
 '''
         @self.command(name="map", pass_context=True)
         async def map(ctx):
-            ''' Command: MapBot.map
-                Return Embed Values:
-                - High-detail image of corresponding map
+            ''' Returns a high-detailed image of the corresponding map
 '''
             embed = discord.Embed(title="Map", color=0x0000ff)
             file = discord.File(
@@ -424,7 +476,10 @@ class MapBot(commands.Bot):
             embed.set_image(url="attachment://Map.png")
             await ctx.send(file=file, embed=embed)
 
+        @self.command(name="sabotage_map", pass_context=True)
         async def sabotage_map(ctx):
+            ''' Returns an image of the sabotage map of the corresponding map
+'''
             embed = discord.Embed(title="Sabotage Map", color=0x0000ff)
             file = discord.File(
                 os.path.join('data', self.directory, "Sabotage Map.png"),
@@ -434,9 +489,7 @@ class MapBot(commands.Bot):
 
         @self.command(name="tasks", pass_context=True)
         async def tasks(ctx):
-            ''' Command: MapBot.tasks
-                Return Embed Values:
-                - List of all tasks which can be completed on the map
+            ''' Returns a list of all the tasks on the map
 '''
             embed = discord.Embed(title="Tasks", color=0x0000ff)
             for i, task in enumerate(self.data['Tasks'], 1):
@@ -445,9 +498,7 @@ class MapBot(commands.Bot):
 
         @self.command(name="task_type", pass_context=True)
         async def task_type(ctx, type_name):
-            ''' Command: MapBot.task_type Type
-                Return Embed Values:
-                - List of all tasks which are classified as such
+            ''' Returns a list of all the tasks by the type on the map
 '''
             tasks = []
             for task in self.data['Tasks']:
@@ -463,9 +514,9 @@ class MapBot(commands.Bot):
             await ctx.send(embed=embed)
 
         @self.command(name="task", pass_context=True)
-        async def task(ctx, *name):
-            ''' Command: MapBot.task Task Name
-                Return Embed Values:
+        async def task(ctx, name):
+            ''' Returns information about a given task
+                Returns:
                 - Name of task
                 - Type of task
                 - Locations where the task can be completed
@@ -493,9 +544,7 @@ class MapBot(commands.Bot):
 
         @self.command(name="locations", pass_context=True)
         async def locations(ctx):
-            ''' Command: MapBot.locations
-                Return Embed Values:
-                - List of all locations on the map
+            ''' Returns a list of all the locations on the map
 '''
             embed = discord.Embed(title="Locations", color = 0x0000ff)
             for i, room in enumerate(self.data["Locations"], 1):
@@ -504,8 +553,8 @@ class MapBot(commands.Bot):
 
         @self.command(name="location", pass_context=True)
         async def location(ctx, *name):
-            ''' Command: MapBot.location Location Name
-                Return Embed Values:
+            ''' Returns information about a given location
+                Returns:
                 - Name of location
                 - Directly connected locations
                 - Locations connected by vents
@@ -534,9 +583,7 @@ class MapBot(commands.Bot):
 
         @self.command(name="vents", pass_context=True)
         async def vents(ctx):
-            ''' Command: MapBot.vents
-                Return Embed Values:
-                - List of all vents on the map
+            ''' Returns a list of all the vents on the map
 '''
             embed = discord.Embed(title="Vents", color=0x0000ff)
             for i, vent in enumerate(self.data["Vents"], 1):
@@ -545,8 +592,8 @@ class MapBot(commands.Bot):
 
         @self.command(name="vent", pass_context=True)
         async def vent(ctx, *name):
-            ''' Command: MapBot.vent Location Name
-                Return Embed Values:
+            ''' Returns information about a given vent
+                Returns:
                 - Name of location
                 - Locations connected by vents
 '''
@@ -566,9 +613,7 @@ class MapBot(commands.Bot):
 
         @self.command(name="actions", pass_context=True)
         async def actions(ctx):
-            ''' Command: MapBot.actions
-                Return Embed Values:
-                - List of all actions which can be done on the map
+            ''' Returns a list of al the actions on the map
 '''
             embed = discord.Embed(title="Actions", color=0x0000ff)
             for i, action in enumerate(self.data["Actions"], 1):
@@ -577,8 +622,8 @@ class MapBot(commands.Bot):
 
         @self.command(name="action", pass_contextroo=True)
         async def action(ctx, *name):
-            ''' Command: MapBot.action Action Name
-                Return Embed Values:
+            ''' Returns information about a given action
+                Returns
                 - Name of action
                 - Type of action
                 - Locations where action can be done
