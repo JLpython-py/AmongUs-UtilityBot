@@ -93,8 +93,8 @@ class UtilityBot(commands.Bot):
                 - User is granted Member role
                 Restricted to: #introductions
 '''
-            #Ignore commands outside #introductions and #v-introductions
-            if 'introductions' not in ctx.message.channel.name:
+            #Ignore commands outside #introductions
+            if ctx.message.channel.name != 'introduction':
                 return
             #Parse 'name' argument for a valid name
             regex = re.compile(r'^[A-Z][A-Za-z]+ [A-Z][A-Za-z]+$')
@@ -107,9 +107,10 @@ class UtilityBot(commands.Bot):
                     title="Invalid Introduction", color=0x00ff00)
                 fields = {
                     "Error": "Name not detected in entry",
+                    "Note": "Include quotes around you name",
                     "Acceptable Format": "^[A-Z][A-Za-z]+ [A-Z][A-Za-z]+$",
                     "Example": "Among Us",
-                    "Not": "AMONG US, AmongUs, among us, amongus"}
+                    "Not": "AmongUs, among us, amongus"}
                 #Delete invalid command
                 await ctx.message.delete()
             else:
@@ -312,6 +313,9 @@ class UtilityBot(commands.Bot):
         async def claim(ctx, lobby):
             ''' Claim control of a voice channel in Game Lobbies
 '''
+            #Ignore messages outside #utility-bots
+            if ctx.message.channel.name != 'utility-bots':
+                return
             #Get channel and assert that it exists in the guild
             channel = discord.utils.get(
                 ctx.guild.channels, name=lobby)
@@ -360,6 +364,9 @@ class UtilityBot(commands.Bot):
         async def surrender(ctx):
             ''' Surrender control of a voice channel in Game Lobbies
 '''
+            #Ignore messages outside #utility-bots
+            if ctx.message.channel.name != 'utility-bots':
+                return
             #Assert that the user has claimed a lobby
             regex, claimed = re.compile(r"_Claimed: (Lobby [0-9])_"), False
             for role in ctx.message.author.roles:
@@ -388,6 +395,9 @@ class UtilityBot(commands.Bot):
         async def claimed(ctx):
             ''' Check which voice channels in Game Lobbies have been claimed
 '''
+            #Ignore messages outside #utility-bots
+            if ctx.message.channel.name != 'utility-bots':
+                return
             #Parse through all the channels in Game Lobbies
             category = discord.utils.get(
                 ctx.guild.categories, name="Game Lobbies")
@@ -407,6 +417,9 @@ class UtilityBot(commands.Bot):
         async def manage_mute(ctx):
             ''' Mute all the users in a voice channel in Game Lobbies
 '''
+            #Ignore messages outside #utility-bots
+            if ctx.message.channel.name != 'utility-bots':
+                return
             #Use a RegEx to assert that the user has claimed a lobby
             regex, claimed = re.compile(r"_Claimed: (Lobby [0-9])_"), False
             for role in ctx.message.author.roles:
@@ -482,9 +495,9 @@ class MapBot(commands.Bot):
 '''
             embed = discord.Embed(title="Sabotage Map", color=0x0000ff)
             file = discord.File(
-                os.path.join('data', self.directory, "Sabotage Map.png"),
-                "Sabotage Map.png")
-            embed.set_image(url="attachment://Sabotage Map.png")
+                os.path.join('data', self.directory, "SabotageMap.png"),
+                "SabotageMap.png")
+            embed.set_image(url="attachment://SabotageMap.png")
             await ctx.send(file=file, embed=embed)
 
         @self.command(name="tasks", pass_context=True)
@@ -656,18 +669,16 @@ class Main:
         self.map_bots = ('The Skeld', 'Mira HQ', 'Polus')#, 'Airship')
         self.util_bots = ('Utils',)
         token_file = os.path.join('data', 'tokens.csv')
-        if os.path.exists(token_file):
-            logging.info("Running on token CSV files")
+        self.tokens = {
+            'Mira HQ': os.environ.get('MIRAHQ', None),
+            'Polus': os.environ.get('POLUS', None),
+            'The Skeld': os.environ.get('THESKELD', None),
+            'Utils': os.environ.get('UTILS', None)}
+        logging.info("Running on Config Variables")
+        if None in self.tokens.values():
             with open(token_file) as file:
                 self.tokens = dict(list(csv.reader(file, delimiter='\t')))
-        else:
-            logging.info("Running on Config Variables")
-            self.tokens = {
-                #'Airship': process.env.AIRSHIP,
-                'Mira HQ': os.environ.get('MIRAHQ', None),
-                'Polus': os.environ.get('POLUS', None),
-                'The Skeld': os.environ.get('THESKELD', None),
-                'Utils': os.environ.get('UTILS', None)}
+            logging.info("Running on token CSV files")
 
         self.loop = asyncio.get_event_loop()
         #Create a MapBot-class bot for each Among Us map
