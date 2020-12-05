@@ -93,7 +93,7 @@ class UtilityBot(commands.Bot):
                 Restricted to: #introductions
 '''
             #Ignore commands outside #introductions
-            if ctx.message.channel.name != 'introduction':
+            if ctx.message.channel.name != 'introductions':
                 return
             #Parse 'name' argument for a valid name
             regex = re.compile(r'^[A-Z][A-Za-z]+ [A-Z][A-Za-z]+$')
