@@ -296,7 +296,7 @@ class UtilityBot(commands.Bot):
                 await old_role.delete()
             #Check if the member has reached a new tier
             for i in range(int(points)+1, new_points+1):
-                if i in tiers:
+                if i in self.tiers:
                     #Get tier which the member just reached
                     new_tier = self.tiers[i]
                     tier_role = discord.utils.get(
