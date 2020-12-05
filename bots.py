@@ -27,7 +27,6 @@ class UtilityBot(commands.Bot):
             self.regexes = dict(list(csv.reader(file, delimiter='\t')))
         with open(os.path.join('data', 'tiers.csv')) as file:
             self.tiers = dict(list(csv.reader(file, delimiter='\t')))
-            self.tiers = {v:int(k) for k, v in self.tiers.items()}
         self.execute_commands()
 
     async def on_ready(self):
