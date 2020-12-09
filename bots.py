@@ -80,6 +80,132 @@ class UtilityBot(commands.Bot):
             embed.add_field(name=field, value=fields[field])
         await direct_message.send(embed=embed)
 
+    async def on_raw_reaction_add(self, payload):
+        reaction, user = payload.emoji, payload.member
+        channel = self.get_channel(payload.channel_id)
+        guild = self.get_guild(payload.guild_id)
+        message = await channel.fetch_message(payload.message_id)
+        if user.bot:
+            return
+        if channel.name == 'dev-build':
+            if reaction.name in ["Shhh", "Emergency_Meeting", "Report"]:
+                await self.voice_control(payload)
+            elif reaction.name in ["Kill"]:
+                await self.yield_claim(payload)
+            elif reaction.name in [
+                u"\u0030\ufe0f\u20e3", u"\u0031\ufe0f\u20e3",
+                u"\u0030\ufe2f\u20e3", u"\u0033\ufe0f\u20e3",
+                u"\u0030\ufe4f\u20e3"]:
+                await self.claim_lobby(payload)
+            else:
+                await message.remove_reaction(reaction, user)            
+
+    async def voice_control(self, payload):
+        reaction, user = payload.emoji, payload.member
+        channel = self.get_channel(payload.channel_id)
+        guild = self.get_guild(payload.guild_id)
+        message = await channel.fetch_message(payload.message_id)
+        voice = {"Shhh": True, "Emergency_Meeting": False, "Report": False}
+        role, regex = None, re.compile(r"_Claimed: (Lobby [0-9])_")
+        for r in user.roles:
+            if regex.search(r.name):
+                role = regex.search(r.name).group()
+                lobby = regex.search(r.name).group(1)
+                break
+        if role is None:
+            await channel.send("You have not claimed any of the game lobbies")
+            await message.remove_reaction(reaction, user)
+            return
+        embed = message.embeds[0].to_dict()
+        if lobby != embed['footer']['text']:
+            claim = embed['footer']['text']
+            await channel.send(f"You do not have a claim on {claim}")
+            await message.remove_reaction(reaction, user)
+            return
+        lobby = discord.utils.get(guild.channels, name=lobby)
+        if not lobby.members:
+            await channel.send(f"There are no members in {lobby}")
+        else:
+            for member in lobby.members:
+                await member.edit(mute=voice[reaction.name])
+        await message.remove_reaction(reaction, user)
+
+    async def yield_claim(self, payload):
+        reaction, user = payload.emoji, payload.member
+        channel = self.get_channel(payload.channel_id)
+        guild = self.get_guild(payload.guild_id)
+        message = await channel.fetch_message(payload.message_id)
+        role, regex = None, re.compile(r"_Claimed: (Lobby [0-9])_")
+        for r in user.roles:
+            if regex.search(r.name):
+                role = regex.search(r.name).group()
+                lobby = regex.search(r.name).group(1)
+                break
+        if role is None:
+            await channel.send("You have not claimed any of the game lobbies")
+            await message.remove_reaction(reaction, user)
+            return
+        embed = message.embeds[0].to_dict()
+        if lobby != embed['footer']['text']:
+            claim = embed['footer']['text']
+            await channel.send(f"You do not have a claim on {claim}")
+            await message.remove_reaction(reaction, user)
+            return
+        claim_role = discord.utils.get(guild.roles, name=role)
+        await claim_role.delete()
+        embed = message.embeds[0]
+        embed.title = "Game Lobby Yielded"
+        fields = {"Yielded": f"You have successfully yielded {lobby}"}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        await message.edit(embed=embed)
+        for r in message.reactions:
+            await message.clear_reaction(r)
+
+    async def claim_lobby(self, payload):
+        reaction, user = payload.emoji, payload.member
+        channel = self.get_channel(payload.channel_id)
+        guild = self.get_guild(payload.guild_id)
+        message = await channel.fetch_message(payload.message_id)
+        embed = message.embeds[0].to_dict()
+        if user.name != embed['footer']['text']:
+            await channel.send("You did not request this claim panel")
+            await message.remove_reaction(reaction, user)
+            return
+        lobbies = {
+            u"\u0030\ufe0f\u20e3": "Lobby 0",
+            u"\u0031\ufe0f\u20e3": "Lobby 1",
+            u"\u0030\ufe2f\u20e3": "Lobby 2",
+            u"\u0033\ufe0f\u20e3": "Lobby 3",
+            u"\u0030\ufe4f\u20e3": "Lobby 4"}
+        lobby = lobbies[reaction.name]
+        claim_rname = f"_Claimed: {lobby}_"
+        await guild.create_role(name=claim_rname)
+        claim_role = discord.utils.get(guild.roles, name=claim_rname)
+        await user.add_roles(claim_role)
+        embed = discord.Embed(title="Game Lobby Claimed", color=0x00ff00)
+        fields = {
+            "Claimed": f"You have successfully claimed {lobby}",
+            "Voice Control": '\n'.join([
+                f"You now have control of the voices in {lobby}",
+                "Mute: <:Shhh:777210413929463808>",
+                "Unmute: <:Emergency_Meeting:777211033655574549>"
+                "\t or <:Report:777211184881467462>"]),
+            "Yield": '\n'.join([
+                "Please yield your claim when you are finished",
+                "Yield: <:Kill:777210412269043773>"])}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        embed.set_footer(text=lobby)
+        message = await channel.send(embed=embed)
+        reactions = [
+            "<:Shhh:777210413929463808>",
+            "<:Emergency_Meeting:777211033655574549>",
+            "<:Report:777211184881467462>",
+            "<:Kill:777210412269043773>"]
+        for reaction in reactions:
+            await message.add_reaction(reaction)
+
     def execute_commands(self):
         ''' Bot commands which can be used by users with the 'Member' role
 '''
@@ -309,135 +435,36 @@ class UtilityBot(commands.Bot):
                     await ctx.send(embed=embed)
 
         @self.command(name="claim", pass_context=True)
-        async def claim(ctx, lobby):
+        async def claim(ctx):
             ''' Claim control of a voice channel in Game Lobbies
 '''
             #Ignore messages outside #utility-bots
-            if ctx.message.channel.name != 'utility-bots':
-                return
-            #Get channel and assert that it exists in the guild
-            channel = discord.utils.get(
-                ctx.guild.channels, name=lobby)
-            if channel is None or channel.category.name != "Game Lobbies":
-                await ctx.send("You cannot claim that voice channel")
-                return
+            #if ctx.message.channel.name != 'utility-bots':
+            #    return
             #Use a RegEx to check if user has already claimed a game lobby
             regex = re.compile(r"_Claimed: (Lobby [0-9])_")
             for role in ctx.author.roles:
                 if regex.search(role.name) is None:
                     continue
-                if regex.search(role.name).group(1) == lobby:
-                    await ctx.send(f"You have already claimed {voice_channel}")
-                    return
                 await ctx.send("You cannot claim multiple game lobbies")
                 return
-            #Generate a role identifying the game lobby which was claimed
-            claim_rname = f"_Claimed: {channel}_"
-            if claim_rname in [r.name for r in ctx.guild.roles]:
-                await ctx.send("This channel has already been claimed")
-                return
-            #Create the role and award it to the user
-            await ctx.guild.create_role(name=claim_rname)
-            claim_role = discord.utils.get(
-                ctx.guild.roles, name=claim_rname)
-            await ctx.message.author.add_roles(claim_role)
-            #Notify user that the game lobby has been claimed
-            direct_message = await ctx.message.author.create_dm()
-            embed = discord.Embed(title="Game Lobby claimed", color=0x00ff00)
-            fields = {
-                "Claimed": f"You have successfully claimed {lobby}",
-                "Mute/Unmute": '\n'.join([
-                    f"You can now control the voices of others in {lobby}",
-                    "Use 'manage_mute' or 'mm' in #utility-bots"]),
-                "Role": '\n'.join([
-                    f"You now have the '\{claim_rname}' role",
-                    f"This identifies your claim on {lobby}"]),
-                "Surrender": '\n'.join([
-                    "Please surrender your claim when you are finished",
-                    "Use 'surrender' in #utility-bots"])}
-            for field in fields:
-                embed.add_field(name=field, value=fields[field])
-            await direct_message.send(embed=embed)
-
-        @self.command(name="surrender", pass_context=True)
-        async def surrender(ctx):
-            ''' Surrender control of a voice channel in Game Lobbies
-'''
-            #Ignore messages outside #utility-bots
-            if ctx.message.channel.name != 'utility-bots':
-                return
-            #Assert that the user has claimed a lobby
-            regex, claimed = re.compile(r"_Claimed: (Lobby [0-9])_"), False
-            for role in ctx.message.author.roles:
-                if regex.search(role.name):
-                    lobby = regex.search(role.name).group(1)
-                    claimed = True
-                    break
-            if not claimed:
-                await ctx.send("You have not claimed any of the game lobbies")
-                return
-            #Get the role of the claimed game lobby and delete the role
-            claim_rname = regex.search(role.name).group()
-            claim_role = discord.utils.get(ctx.guild.roles, name=claim_rname)
-            await claim_role.delete()
-            #Notify user that the game lobby has been surrendered
-            direct_message = await ctx.message.author.create_dm()
             embed = discord.Embed(
-                title="Game Lobby surrendered", color=0x00ff00)
-            fields = {
-                "Surrendered": f"You have successfully surrendered {lobby}"}
+                title="Game Lobby Claim Panel", color=0x00ff00)
+            fields = {"Claim": "Use the reactions below to claim a lobby"}
             for field in fields:
                 embed.add_field(name=field, value=fields[field])
-            await direct_message.send(embed=embed)
-
-        @self.command(name="claimed", pass_context=True)
-        async def claimed(ctx):
-            ''' Check which voice channels in Game Lobbies have been claimed
-'''
-            #Ignore messages outside #utility-bots
-            if ctx.message.channel.name != 'utility-bots':
-                return
-            #Parse through all the channels in Game Lobbies
-            category = discord.utils.get(
-                ctx.guild.categories, name="Game Lobbies")
-            claimed = []
-            for channel in category.channels:
-                #Check if the claimed game lobby role exists
-                claim_rname = f"_Claimed: {channel.name}_"
-                if claim_rname in [r.name for r in ctx.guild.roles]:
-                    claimed.append(channel.name)
-            #Report any claimed game lobbies
-            if not claimed:
-                await ctx.send("No game lobbies are currently claimed")
-            else:
-                await ctx.send(f"Claimed game lobbies: {claimed}")
-
-        @self.command(name="manage_mute", pass_context=True, aliases=['mm'])
-        async def manage_mute(ctx):
-            ''' Mute all the users in a voice channel in Game Lobbies
-'''
-            #Ignore messages outside #utility-bots
-            if ctx.message.channel.name != 'utility-bots':
-                return
-            #Use a RegEx to assert that the user has claimed a lobby
-            regex, claimed = re.compile(r"_Claimed: (Lobby [0-9])_"), False
-            for role in ctx.message.author.roles:
-                if regex.search(role.name):
-                    claimed = True
-                    break
-            if not claimed:
-                await ctx.send("You have not claimed any of the game lobbies")
-                return
-            #Get the claimed voice channel and mute/unmute all users in it
-            lobby = discord.utils.get(
-                ctx.guild.channels, name=regex.search(role.name).group(1))
-            if not lobby.members:
-                await ctx.send(f"There are no members to mute/unmute")
-                return
-            for member in lobby.members:
-                await member.edit(mute=not member.voice.mute)
-            status = "muted" if member.voice.mute else "unmuted"
-            await ctx.send(f"The members in {lobby} have been {status}")
+            embed.set_footer(text=ctx.author.name)
+            message = await ctx.send(embed=embed)
+            reactions = {
+                "Lobby 0": u"\u0030\ufe0f\u20e3",
+                "Lobby 1": u"\u0031\ufe0f\u20e3",
+                "Lobby 2": u"\u0032\ufe0f\u20e3",
+                "Lobby 3": u"\u0033\ufe0f\u20e3",
+                "Lobby 4": u"\u0034\ufe0f\u20e3"}
+            for lobby in reactions:
+                role = f"_Claimed: {lobby}_"
+                if discord.utils.get(ctx.guild.roles, name=role) is None:
+                    await message.add_reaction(reactions[lobby])
 
 class Main:
     def __init__(self):
@@ -445,6 +472,9 @@ class Main:
 '''
         self.bots = {
             'Utils': os.environ.get('UTILS', None)}
+        if None in self.bots.values():
+            with open(os.path.join('data', 'tokens.csv')) as file:
+                self.bots = dict(list(csv.reader(file, delimiter='\t')))
         self.loop = asyncio.get_event_loop()
         for bot in self.bots:
             token = self.bots[bot]
