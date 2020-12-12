@@ -26,6 +26,7 @@ class UtilityBot(commands.Bot):
             self.regexes = dict(list(csv.reader(file)))
         with open(os.path.join('data', 'tiers.csv')) as file:
             self.tiers = dict(list(csv.reader(file)))
+            self.tiers = {int(k):v for k, v in self.tiers.items()}
         self.execute_commands()
 
     async def on_ready(self):
@@ -305,8 +306,8 @@ class UtilityBot(commands.Bot):
                 Return values:
                 - :Victory: and :Defeat: reactions for members to vote with
 '''
-            #Ignore command if outside #suggestions-and-bugs
-            if ctx.message.channel.name != 'suggestions-and-bugs':
+            #Ignore command if outside #bugs-and-suggestions
+            if ctx.message.channel.name != 'bugs-and-suggestions':
                 return
             #React to the message with emojis to allow members to vote
             reactions = ["<:Victory:779396489792847892>",
@@ -320,8 +321,8 @@ class UtilityBot(commands.Bot):
                 Return values:
                 - :Report: reaction for members to report the bug
 '''
-            #Ignore command if outside #suggestions-and-bugs
-            if ctx.message.channel.name != 'suggestions-and-bugs':
+            #Ignore command if outside #bugs-and-suggestions
+            if ctx.message.channel.name != 'bugs-and-suggestions':
                 return
             #React to message with emojis to allow members to report
             reactions = ["<:Report:777211184881467462"]
@@ -393,8 +394,8 @@ class UtilityBot(commands.Bot):
                     points = int(role_regex.search(role.name).group(1))
             new_points = points + plus
             #Generate roles for the new and old number of points
-            old = f"_Contributions: {points}_"
-            new = f"_Contributions: {new_points}_"
+            old = f"_Guild Points: {points}_"
+            new = f"_Guild Points: {new_points}_"
             old_role = discord.utils.get(ctx.guild.roles, name=old)
             new_role = discord.utils.get(ctx.guild.roles, name=new)
             #Create new role if does not already exist
@@ -430,8 +431,8 @@ class UtilityBot(commands.Bot):
             ''' Claim control of a voice channel in Game Lobbies
 '''
             #Ignore messages outside #utility-bots
-            #if ctx.message.channel.name != 'utility-bots':
-            #    return
+            if ctx.message.channel.name != 'utility-bots':
+                return
             #Use a RegEx to check if user has already claimed a game lobby
             regex = re.compile(r"_Claimed: (Lobby [0-9])_")
             for role in ctx.author.roles:
