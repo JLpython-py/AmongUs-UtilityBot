@@ -1,4 +1,4 @@
 suggestions-and-bugs,^\*(suggestion|bug|give_points)
 game-codes,^[A-Za-z]{6}$
 map-bots,^(Airship|MiraHQ|Polus|TheSkeld)\.(map|sabotage_map|list|get)
-utility-bots,^\*(claim|get_points)$
+utility-bots,^\*(claim|get_points|give_points)$
