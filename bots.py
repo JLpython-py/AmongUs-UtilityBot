@@ -3,7 +3,6 @@
 
 import asyncio
 import csv
-import json
 import logging
 import os
 import re
@@ -15,97 +14,220 @@ logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(levelname)s - %
 
 class UtilityBot(commands.Bot):
     def __init__(self, *, command_prefix, name):
-        '''
-'''
+        self.name = name
+        #Manage intents to allow bot to view all members
         intents = discord.Intents.default()
         intents.members = True
         commands.Bot.__init__(
             self, command_prefix=command_prefix, intents=intents,
             self_bot=False)
-        self.name = name
-        with open(os.path.join('data', 'regex.csv')) as file:
-            self.regexes = dict(list(csv.reader(file, delimiter='\t')))
+        #Load regular expression and tier data
+        with open(os.path.join('data', 'regular_expressions.csv')) as file:
+            self.regexes = dict(list(csv.reader(file)))
         with open(os.path.join('data', 'tiers.csv')) as file:
-            self.tiers = dict(list(csv.reader(file, delimiter='\t')))
+            self.tiers = dict(list(csv.reader(file)))
         self.execute_commands()
 
     async def on_ready(self):
-        ''' Notify developer that a UtilBot-class bot is active
-'''
-        print(f"Bot is ready: {self.name}")
+        logging.info(f"Ready: {self.name}")
 
+    async def on_member_join(self, member):
+        logging.info(f"Member Join: {member}")
+        if member.bot:
+            return
+        direct_message = await member.create_dm()
+        embed = discord.Embed(
+            title=f"Welcome {member.name}, to the Among Us Discord server",
+            color=0xff0000)
+        fields = {
+            "Gain Access": "\n".join([
+                "To gain full access to the server, read the rules in #rules",
+                "Then, react to the message to be granted the 'Member' role",
+                "You will have general access to the server with that role"]),
+            "Bots": "\n".join([
+                "In this server, there are three different classes of bots",
+                "They are Moderator Bots, Utility Bots, and Map Bots",
+                "The corresponding bots for each class are listed below:",
+                "- MEE6 (!)",
+                "- Utils (*)",
+                "- Mira HQ (MiraHQ.), Polus (Polus.), The Skeld (TheSkeld.)"]),
+            "Questions?": "\n".join([
+                "Channel information can be found in #channel-descriptions",
+                "Bot help can be found using the 'help' command for each bot",
+                "If you still have questions, try asking others in the server",
+                "You can always ask someone with the 'Moderator' role too"])}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        await direct_message.send(embed=embed)
+        
     async def on_message(self, message):
-        ''' Messages from certain channels are run through a regex
-            Messages that do not comply to the regex are deleted
-'''
-        logging.info((message.author.name, message.channel, message.content))
+        logging.info(f"Message: {message}")
         #Ignore all bot messages
         if message.author.bot:
             return
-        if 'Direct Message' in str(message.channel):
-            embed = discord.Embed(
-                title="Direct Messaging is not supported", color=0xff000)
-            ctx.send(embed=embed)
+        if message.content.startswith('*')\
+           and "Direct Message" in str(message.channel):
+            await ctx.send("Direct Message channels do not support commands")
             return
+        #Get the regular expression for the channel
+        regex = re.compile(r'.*')
         for channel in self.regexes:
-            if channel in message.channel.name:
+            if channel == message.channel.name and channel in self.regexes:
+                regex = re.compile(self.regexes[channel])
                 break
-        regex = re.compile(self.regexes[channel])
+        #Delete message if it does not fit the regular expressions
+        help_regex = re.compile(r'^\*help')
         results = regex.search(message.content)
-        if results is not None or 'help' in message.content:
+        help_results = help_regex.search(message.content)
+        if results is not None or help_results is not None:
             await self.process_commands(message)
         else:
             await message.delete()
             return
 
     async def on_voice_state_update(self, member, before, after):
-        regex, claimed = re.compile(r"_Claimed: (Lobby [0-9])_"), False
-        for role in member.roles:
-            if regex.search(role.name):
-                voice_channel = regex.search(role.name).group(1)
-                claimed = True
-                break
-        if not claimed or not (before.channel and after.channel is None):
-            return
-        direct_message = await member.create_dm()
-        embed = discord.Embed(
-            title="Surrender Game Lobby Claim", color=0x00ff00)
-        fields = {
-            "Details": '\n'.join([
-                f"You recently disconnected from {voice_channel}.",
-                "If you are still using this lobby, ignore this message.",
-                "If not, please surrender your claim on this lobby."]),
-            "Surrender Claim": "Use command 'surrender' in #utility-bots"}
-        for field in fields:
-            embed.add_field(name=field, value=fields[field])
-        await direct_message.send(embed=embed)
+        logging.info(f"Voice State Update: {(member, before, after)}")
+        #If the user disconnected, check if the user had a game lobby claim
+        if before.channel and after.channel is None:
+            regex = re.compile(r"_Claimed: (Lobby [0-9])_")
+            for role in member.roles:
+                if regex.search(role.name):
+                    lobby = regex.search(role.name).group(1)
+                    await self.disconnect_with_claim(member, lobby)
+        #Mute new user if other members are muted when new user joins
+        elif before.channel is None and after.channel:
+            claim_role = discord.utils.get(
+                self.get_guild(member.guild.id).roles,
+                name=f"_Claimed: {after.channel.name}_")
+            if claim_role is None:
+                return
+            for user in after.channel.members:
+                if not member.voice.mute:
+                    await member.edit(mute=True)
 
     async def on_raw_reaction_add(self, payload):
-        reaction, user = payload.emoji, payload.member
-        channel = self.get_channel(payload.channel_id)
-        guild = self.get_guild(payload.guild_id)
-        message = await channel.fetch_message(payload.message_id)
-        if user.bot:
+        logging.info(f"Raw Reaction Add: {payload}")
+        #Ignore bot reactions
+        if payload.member.bot:
             return
-        if channel.name == 'dev-build':
-            if reaction.name in ["Shhh", "Emergency_Meeting", "Report"]:
-                await self.voice_control(payload)
-            elif reaction.name in ["Kill"]:
-                await self.yield_claim(payload)
-            elif reaction.name in [
+        #Check reaction properties for control panel usage
+        channel = self.get_channel(payload.channel_id)
+        if channel.name == 'rules':
+            name = payload.emoji.name
+            if name in [u"\u2705"]:
+                await self.rule_agreement(payload)
+        elif channel.name == 'utility-bots':
+            name = payload.emoji.name
+            if name in [
                 u"\u0030\ufe0f\u20e3", u"\u0031\ufe0f\u20e3",
                 u"\u0030\ufe2f\u20e3", u"\u0033\ufe0f\u20e3",
                 u"\u0030\ufe4f\u20e3"]:
                 await self.claim_lobby(payload)
+            elif name in ["Shhh", "Emergency_Meeting", "Report"]:
+                await self.voice_control(payload)
+            elif name in ["Kill"]:
+                await self.yield_claim(payload)
             else:
-                await message.remove_reaction(reaction, user)            
+                message = await channel.fetch_message(payload.message_id)
+                await message.remove_reaction(payload.emoji, payload.member)
 
-    async def voice_control(self, payload):
+    async def rule_agreement(self, payload):
+        #Get information from payload
+        user = payload.member
+        guild = self.get_guild(payload.guild_id)
+        #Grant user the 'Member' role
+        role = discord.utils.get(guild.roles, name="Member")
+        await user.add_roles(role)
+        direct_message = await user.create_dm()
+        embed = discord.Embed(title="Membership Granted", color=0x00ff00)
+        fields = {
+            "Member": "'Member' and general server acess have been granted"}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        await direct_message.send(embed=embed)
+        
+    async def disconnect_with_claim(self, member, lobby):
+        ''' Notifies user if they disconnected from their claimed game lobby
+            Requests that they use the :Report: reaction to yield their claim
+'''
+        #Create and send embed notifying user with claim
+        direct_message = await member.create_dm()
+        embed = discord.Embed(
+            title="Disconnected from Game Lobby with Claim", color=0x00ff00)
+        fields = {
+            "Details": '\n'.join([
+                f"You recently disconnected from {lobby}, which you claimed.",
+                "If you are still using this lobby, ignore this message.",
+                "Othersiwse, yield your claim using the control panel"]),
+            "Yield Claim": "React with <:Kill:777210412269043773>"}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        await direct_message.send(embed=embed)
+
+    async def claim_lobby(self, payload):
+        ''' Allows user to claim voice control over a game lobby
+            Sends a voice control panel for the user to mute/unmute members
+'''
+        #Get information from payload
         reaction, user = payload.emoji, payload.member
         channel = self.get_channel(payload.channel_id)
         guild = self.get_guild(payload.guild_id)
         message = await channel.fetch_message(payload.message_id)
-        voice = {"Shhh": True, "Emergency_Meeting": False, "Report": False}
+        #Verify that the user requested the claim panel
+        claim_panel = message.embeds[0]
+        claim_fields = claim_panel.to_dict()
+        if user.name != claim_fields['footer']['text']:
+            await channel.send("You did not request this claim panel")
+            await message.remove_reaction(reaction, user)
+            return
+        #Indicate to all members that the claim panel is inactive
+        claim_panel.title = f"{claim_panel.title} [CLOSED]"
+        await message.edit(embed=claim_panel)
+        for r in message.reactions:
+            await message.clear_reaction(r)
+        #Give game lobby claim to user based on the emoji used
+        lobbies = {
+            u"\u0030\ufe0f\u20e3": 0, u"\u0031\ufe0f\u20e3": 1,
+            u"\u0030\ufe2f\u20e3": 2, u"\u0033\ufe0f\u20e3": 3,
+            u"\u0030\ufe4f\u20e3": 4}
+        lobby = f"Lobby {lobbies[reaction.name]}"
+        claim_rname = f"_Claimed: {lobby}_"
+        await guild.create_role(name=claim_rname)
+        claim_role = discord.utils.get(guild.roles, name=claim_rname)
+        await user.add_roles(claim_role)
+        #Create and send game lobby control panel
+        control_panel = discord.Embed(
+            title="Game Lobby Control Panel", color=0x00ff00)
+        fields = {
+            "Claimed": f"You have successfully claimed {lobby}",
+            "Voice Control": '\n'.join([
+                f"You now have control of the voices in {lobby}",
+                '\t'.join(["Mute:", "<:Shhh:777210413929463808>"]),
+                '\t'.join(["Unmute:", "\t<:Report:777211184881467462>",
+                           "\t<:Emergency_Meeting:777211033655574549>"])]),
+            "Yield": '\n'.join([
+                "Please yield your claim when you are finished",
+                '\t'.join(["Yield:", "<:Kill:777210412269043773>"])])}
+        for field in fields:
+            control_panel.add_field(name=field, value=fields[field])
+        control_panel.set_footer(text=lobby)
+        message = await channel.send(embed=control_panel)
+        reactions = [
+            "<:Shhh:777210413929463808>", "<:Report:777211184881467462>",
+            "<:Emergency_Meeting:777211033655574549>",
+            "<:Kill:777210412269043773>"]
+        for reaction in reactions:
+            await message.add_reaction(reaction)
+
+    async def voice_control(self, payload):
+        ''' Manages member voices in a game lobby if the user has a claim
+'''
+        #Get information from payload
+        reaction, user = payload.emoji, payload.member
+        channel = self.get_channel(payload.channel_id)
+        guild = self.get_guild(payload.guild_id)
+        message = await channel.fetch_message(payload.message_id)
+        #Verify that the user has a claim on the game lobby
         role, regex = None, re.compile(r"_Claimed: (Lobby [0-9])_")
         for r in user.roles:
             if regex.search(r.name):
@@ -116,13 +238,17 @@ class UtilityBot(commands.Bot):
             await channel.send("You have not claimed any of the game lobbies")
             await message.remove_reaction(reaction, user)
             return
-        embed = message.embeds[0].to_dict()
-        if lobby != embed['footer']['text']:
-            claim = embed['footer']['text']
+        #Verify that the user is using the correct control panel
+        claim_panel = message.embeds[0]
+        claim_fields = claim_panel.to_dict()
+        if lobby != claim_fields['footer']['text']:
+            claim = claim_fields['footer']['text']
             await channel.send(f"You do not have a claim on {claim}")
             await message.remove_reaction(reaction, user)
             return
+        #Manage the voices based on the emoji used
         lobby = discord.utils.get(guild.channels, name=lobby)
+        voice = {"Shhh": True, "Emergency_Meeting": False, "Report": False}
         if not lobby.members:
             await channel.send(f"There are no members in {lobby}")
         else:
@@ -131,10 +257,14 @@ class UtilityBot(commands.Bot):
         await message.remove_reaction(reaction, user)
 
     async def yield_claim(self, payload):
+        '''
+'''
+        #Get information from payload
         reaction, user = payload.emoji, payload.member
         channel = self.get_channel(payload.channel_id)
         guild = self.get_guild(payload.guild_id)
         message = await channel.fetch_message(payload.message_id)
+        #Verify that the user has a claim on the game lobby
         role, regex = None, re.compile(r"_Claimed: (Lobby [0-9])_")
         for r in user.roles:
             if regex.search(r.name):
@@ -145,170 +275,30 @@ class UtilityBot(commands.Bot):
             await channel.send("You have not claimed any of the game lobbies")
             await message.remove_reaction(reaction, user)
             return
-        embed = message.embeds[0].to_dict()
-        if lobby != embed['footer']['text']:
-            claim = embed['footer']['text']
+        #Verify that the user is using the correct control pannel
+        control_panel = message.embeds[0]
+        control_fields = control_panel.to_dict()
+        if lobby != control_fields['footer']['text']:
+            claim = control_fields['footer']['text']
             await channel.send(f"You do not have a claim on {claim}")
             await message.remove_reaction(reaction, user)
             return
+        #Delete the role indicating the user's claim on the game lobby
         claim_role = discord.utils.get(guild.roles, name=role)
         await claim_role.delete()
-        embed = message.embeds[0]
-        embed.title = "Game Lobby Yielded"
+        #Indicate to all members that the control panel is inactive
+        control_panel.title = f"{control_panel.title} [CLOSED]"
+        control_panel.clear_fields()
         fields = {"Yielded": f"You have successfully yielded {lobby}"}
         for field in fields:
-            embed.add_field(name=field, value=fields[field])
-        await message.edit(embed=embed)
+            control_panel.add_field(name=field, value=fields[field])
+        await message.edit(embed=control_panel)
         for r in message.reactions:
             await message.clear_reaction(r)
-
-    async def claim_lobby(self, payload):
-        reaction, user = payload.emoji, payload.member
-        channel = self.get_channel(payload.channel_id)
-        guild = self.get_guild(payload.guild_id)
-        message = await channel.fetch_message(payload.message_id)
-        embed = message.embeds[0].to_dict()
-        if user.name != embed['footer']['text']:
-            await channel.send("You did not request this claim panel")
-            await message.remove_reaction(reaction, user)
-            return
-        lobbies = {
-            u"\u0030\ufe0f\u20e3": "Lobby 0",
-            u"\u0031\ufe0f\u20e3": "Lobby 1",
-            u"\u0030\ufe2f\u20e3": "Lobby 2",
-            u"\u0033\ufe0f\u20e3": "Lobby 3",
-            u"\u0030\ufe4f\u20e3": "Lobby 4"}
-        lobby = lobbies[reaction.name]
-        claim_rname = f"_Claimed: {lobby}_"
-        await guild.create_role(name=claim_rname)
-        claim_role = discord.utils.get(guild.roles, name=claim_rname)
-        await user.add_roles(claim_role)
-        embed = discord.Embed(title="Game Lobby Claimed", color=0x00ff00)
-        fields = {
-            "Claimed": f"You have successfully claimed {lobby}",
-            "Voice Control": '\n'.join([
-                f"You now have control of the voices in {lobby}",
-                "Mute: <:Shhh:777210413929463808>",
-                "Unmute: <:Emergency_Meeting:777211033655574549>"
-                "\t or <:Report:777211184881467462>"]),
-            "Yield": '\n'.join([
-                "Please yield your claim when you are finished",
-                "Yield: <:Kill:777210412269043773>"])}
-        for field in fields:
-            embed.add_field(name=field, value=fields[field])
-        embed.set_footer(text=lobby)
-        message = await channel.send(embed=embed)
-        reactions = [
-            "<:Shhh:777210413929463808>",
-            "<:Emergency_Meeting:777211033655574549>",
-            "<:Report:777211184881467462>",
-            "<:Kill:777210412269043773>"]
-        for reaction in reactions:
-            await message.add_reaction(reaction)
 
     def execute_commands(self):
         ''' Bot commands which can be used by users with the 'Member' role
 '''
-        @self.command(name="introduction", pass_context=True)
-        async def introduction(ctx, name):
-            ''' Returned embed values:
-                - Member nickname
-                - Member name
-                Other return values:
-                - User is granted Member role
-                Restricted to: #introductions
-'''
-            #Ignore commands outside #introductions
-            if ctx.message.channel.name != 'introductions':
-                return
-            #Parse 'name' argument for a valid name
-            regex = re.compile(r'^[A-Z][A-Za-z]+ [A-Z][A-Za-z]+$')
-            results = regex.search(name)
-            #Create a direct message to notify member of message status
-            direct_message = await ctx.message.author.create_dm()
-            if results is None:
-                #Create an embed containing status information
-                embed = discord.Embed(
-                    title="Invalid Introduction", color=0x00ff00)
-                fields = {
-                    "Error": "Name not detected in entry",
-                    "Note": "Include quotes around you name",
-                    "Acceptable Format": "^[A-Z][A-Za-z]+ [A-Z][A-Za-z]+$",
-                    "Example": "Among Us",
-                    "Not": "AmongUs, among us, amongus"}
-                #Delete invalid command
-                await ctx.message.delete()
-            else:
-                name = results.group()
-                #Add 'Member' role to member
-                member = ctx.message.author
-                role = discord.utils.get(member.guild.roles, name="Member")
-                await member.add_roles(role)
-                #Create and send new member information embed to #members channel
-                embed = discord.Embed(
-                    title="Member Information Card", color=0xffff00)
-                information = {"Nickname": member.name, "Name": name}
-                for info in information:
-                    embed.add_field(name=info, value=information[info])
-                channel = discord.utils.get(
-                    ctx.guild.channels, name="members")
-                await channel.send(embed=embed)
-                #Create an embed containing status information
-                embed = discord.Embed(
-                    title="Confirm Introduction", color=0x00ff00)
-                fields = {
-                    "Name set to": name,
-                    "Role": "You have now been granted the 'Member' role",
-                    "Status": "You can now view the rest of the server",
-                    "Typo?": "Run this command to override previous entries"}
-            #Direct message the status embed
-            for field in fields:
-                embed.add_field(name=field, value=fields[field])
-            await direct_message.send(embed=embed)
-
-        @self.command(name="member", pass_context=True)
-        async def member(ctx, search_method, search):
-            ''' Search for a member of the guild by their name or nickname
-                Returned embed values:
-                - Member nickname
-                - Member name
-'''
-            #Assert that the search is either by Name or Nickname
-            search_method = search_method.title()
-            if search_method not in ('Name', 'Nickname'):
-                await ctx.send(f"{search_method} is not a valid search method")
-                return
-            #Parse 'member' argument for a valid name/nickname
-            regex = re.compile(r'^[A-Z][A-Za-z]+ [A-Z][A-Za-z]+$|.*{1,32}')
-            results = regex.search(member)
-            channel = discord.utils.get(
-                ctx.guild.channels, name="introductions")
-            #Parse through the last 200 messages from newest to oldest
-            messages = await channel.history(limit=200).flatten()
-            found = False
-            for message in messages[::-1]:
-                #Use a RegEx to find the name in the introduction
-                name_re = re.compile(r'"?([A-Z][A-Za-z]+\s[A-Z][A-Za-z]+)"?')
-                nickname = message.author.name
-                name = name_re.search(message.content).group(1)
-                if search in message.content:
-                    if search_method == 'Name':
-                        name = search
-                    elif search_method == 'Nickname':
-                        nickname = search
-                    found = True
-                    break
-            if not found:
-                await ctx.send(
-                    f"Could not find {member} [Searched by {search_method}]")
-                return
-            #Create and send member information embed
-            embed = discord.Embed(
-                title="Member Information Card", color=0xffff00)
-            embed.add_field(name="Nickname", value=nickname)
-            embed.add_field(name="Name", value=name)
-            await ctx.send(embed=embed)
-
         @self.command(name="suggestion", pass_context=True)
         async def suggestion(ctx):
             ''' Suggest a feature for the guild or for the bots
@@ -349,9 +339,10 @@ class UtilityBot(commands.Bot):
 '''
             #Parse through member roles to get points
             points = 0
+            role_regex = re.compile('_Guild Points: ([0-9]+)_')
             for role in ctx.author.roles:
-                if '_Contributions' in role.name:
-                    points = int(role.name.strip('_').split()[-1])
+                if role_regex.search(role.name) is not None:
+                    points = int(role_regex.search(role.name).group(1))
                     break
             #Parse through dictionary to get tier information from points
             current_tier, next_tier = 'None', 'Bronze Contributor'
@@ -394,13 +385,13 @@ class UtilityBot(commands.Bot):
                 await ctx.send(f"Could not find {nickname}")
                 return
             #Use a RegEx to find the number of points from the role
-            role_regex = re.compile('_Contributions: ([0-9]+)_')
+            role_regex = re.compile('_Guild Points: ([0-9]+)_')
             #Parse through member roles to get points
-            points = 0
+            points, plus = 0, int(plus)
             for role in member.roles:
                 if role_regex.search(role.name):
-                    points = role_regex.search(role.name).group(1)
-            new_points, points = int(points)+int(plus), int(points)
+                    points = int(role_regex.search(role.name).group(1))
+            new_points = points + plus
             #Generate roles for the new and old number of points
             old = f"_Contributions: {points}_"
             new = f"_Contributions: {new_points}_"
