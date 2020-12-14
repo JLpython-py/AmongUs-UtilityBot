@@ -5,6 +5,7 @@ import asyncio
 import csv
 import logging
 import os
+import random
 import re
 
 import discord
@@ -85,6 +86,9 @@ class UtilityBot(commands.Bot):
         else:
             await message.delete()
             return
+        if message.channel.category in ['General', 'Among Us']:
+            await self.bounty_tickets(message)
+            await self.award_bounty(message)
 
     async def on_voice_state_update(self, member, before, after):
         logging.info(f"Voice State Update: {(member, before, after)}")
@@ -297,6 +301,44 @@ class UtilityBot(commands.Bot):
         for r in message.reactions:
             await message.clear_reaction(r)
 
+    def bounty_tickets(self, message):
+        guild = message.guild
+        channel = random.choice(guild.channels)
+        member = random.choice(guild.members)
+        if message.channel != channel and message.author != member:
+            return
+        role_regex = re.compile(r'_Guild Tickets: ([0-9]+)_')
+        tickets = 0
+        for role in member.roles:
+            if role_regex.search(role.name):
+                tickets = int(role_regex.search(role.name).group(1))
+                break
+        new_tickets = tickets + 1
+        old = f"_Guild Tickets: {tickets}_"
+        new = f"_Guild Tickets: {new_tickes}_"
+        old_role = discord.utils.get(guild.roles, name=old)
+        new_role = discord.utils.get(guild.roles, name=new)
+        if new_role is None:
+            await guild.create_role(name=new)
+            new_role = discord.utils.get(guild.roles, name=new)
+        await member.add_roles(new_role)
+        if old_role is not None:
+            await member.remove_roles(old_role)
+        all_tickets = [r.name for r in guild.roles\
+                       if role_regex.search(r.name) is not None]
+        if old_role and old_role not in all_tickets:
+            await old_role.delete()
+        embed = discord.Embed(
+            title=f"{member} Won a Bounty Ticket!", color=0xff0000)
+        fields = {
+            "Tickets": "\n".join([
+                "Use your tickets to enter in the bounty",
+                "A random user will be chosen and awarded guild points"]),
+            "Total Tickets": new_tickets}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        await channel.send(embed=embed)
+        
     def execute_commands(self):
         ''' Bot commands which can be used by users with the 'Member' role
 '''
