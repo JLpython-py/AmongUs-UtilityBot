@@ -3,6 +3,7 @@
 
 import asyncio
 import csv
+import datetime
 import logging
 import os
 import random
@@ -329,7 +330,7 @@ class UtilityBot(commands.Bot):
         if old_role and old_role not in all_tickets:
             await old_role.delete()
         embed = discord.Embed(
-            title=f"{member} Won a Bounty Ticket!", color=0xff0000)
+            title=f"{member} Received a Bounty Ticket", color=0xff0000)
         fields = {
             "Tickets": "\n".join([
                 "Use your tickets to enter in the bounty",
@@ -338,6 +339,25 @@ class UtilityBot(commands.Bot):
         for field in fields:
             embed.add_field(name=field, value=fields[field])
         await channel.send(embed=embed)
+        
+    def award_bounty(self, message):
+        guild = message.guild
+        channel = random.choice(guild.channels)
+        member = random.choice(guild.members)
+        if message.channel != 'general' and message.author != member:
+            return
+        start = datetime.datetime.now()
+        end = start + datetime.timedelta(hours=1)
+        start, end = time.time(), time.time()+360
+        embed = discord.Embed(title="New Bounty!", color0xff0000)
+        fields = { 
+            "Win This Bounty": "\n".join([
+                "React with the below emojis to enter in this bounty",
+                "- Up to 10 entries are allowed",
+                "- At least 3 members must be entered"]),
+            "Bounty Start": start, "Bounty End": end}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
         
     def execute_commands(self):
         ''' Bot commands which can be used by users with the 'Member' role
