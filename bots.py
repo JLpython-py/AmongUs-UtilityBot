@@ -342,12 +342,11 @@ class UtilityBot(commands.Bot):
         
     def award_bounty(self, message):
         guild = message.guild
-        channel = random.choice(guild.channels)
         member = random.choice(guild.members)
-        if message.channel != 'general' and message.author != member:
-            return
+        #if message.channel != 'general' and message.author != member:
+        #    return
         start = datetime.datetime.now()
-        end = start + datetime.timedelta(hours=1)
+        end = start+datetime.timedelta(minutes=60)
         start, end = time.time(), time.time()+360
         embed = discord.Embed(title="New Bounty!", color0xff0000)
         fields = { 
@@ -358,6 +357,19 @@ class UtilityBot(commands.Bot):
             "Bounty Start": start, "Bounty End": end}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
+        embed.set_footer("Time Remaning: 60 min, 0 sec")
+        channel = discord.utils.get(guild.channels, name='bounties')
+        message = await channel.send(embed=embed)
+        while True:
+            diff = (end-datetime.datetime.now()).get_seconds()
+            if diff <= 0:
+                break
+            minutes, seconds = divmod(diff, 60)
+            remaining = f"Time Reamining: {minutes} min, {seconds} sec"
+            embed = message.embeds[0]
+            embed_fields = embed.to_dict()
+            embed_fields['footer']['text'] = remaining
+            await message.edit(embed=embed)
         
     def execute_commands(self):
         ''' Bot commands which can be used by users with the 'Member' role
