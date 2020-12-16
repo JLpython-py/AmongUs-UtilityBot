@@ -336,11 +336,7 @@ class UtilityBot(commands.Bot):
         for r in message.reactions:
             await message.clear_reaction(r)
 
-<<<<<<< HEAD
     async def bounty_tickets(self, message):
-=======
-    def bounty_tickets(self, message):
->>>>>>> 83f0aad49f585f0a06b67f2232ed9b8676b92964
         guild = message.guild
         channel = random.choice(guild.channels)
         member = random.choice(guild.members)
@@ -378,11 +374,7 @@ class UtilityBot(commands.Bot):
             embed.add_field(name=field, value=fields[field])
         await channel.send(embed=embed)
         
-<<<<<<< HEAD
     async def award_bounty(self, message):
-=======
-    def award_bounty(self, message):
->>>>>>> 83f0aad49f585f0a06b67f2232ed9b8676b92964
         guild = message.guild
         member = random.choice(guild.members)
         #if message.channel != 'general' and message.author != member:
@@ -390,11 +382,7 @@ class UtilityBot(commands.Bot):
         start = datetime.datetime.now()
         end = start+datetime.timedelta(minutes=60)
         start, end = time.time(), time.time()+360
-<<<<<<< HEAD
         embed = discord.Embed(title="New Bounty!", color=0xff0000)
-=======
-        embed = discord.Embed(title="New Bounty!", color0xff0000)
->>>>>>> 83f0aad49f585f0a06b67f2232ed9b8676b92964
         fields = { 
             "Win This Bounty": "\n".join([
                 "React with the below emojis to enter in this bounty",
