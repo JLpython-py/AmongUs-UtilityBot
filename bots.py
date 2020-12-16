@@ -3,8 +3,10 @@
 
 import asyncio
 import csv
+import datetime
 import logging
 import os
+import random
 import re
 
 import discord
@@ -70,6 +72,8 @@ class UtilityBot(commands.Bot):
            and "Direct Message" in str(message.channel):
             await ctx.send("Direct Message channels do not support commands")
             return
+        #Check for Ghost Pings
+        await self.ghost_ping(message)
         #Get the regular expression for the channel
         regex = re.compile(r'.*')
         for channel in self.regexes:
@@ -85,6 +89,9 @@ class UtilityBot(commands.Bot):
         else:
             await message.delete()
             return
+        if message.channel.category in ['General', 'Among Us']:
+            await self.bounty_tickets(message)
+            await self.award_bounty(message)
 
     async def on_voice_state_update(self, member, before, after):
         logging.info(f"Voice State Update: {(member, before, after)}")
@@ -220,6 +227,38 @@ class UtilityBot(commands.Bot):
         for reaction in reactions:
             await message.add_reaction(reaction)
 
+    async def ghost_ping(self, message):
+        ''' Detects when a member @-mentions a role to prevent ghost pings
+'''
+        if '@' not in message.content:
+            return
+        #Verify that the author is not moderator or administrator
+        mod_roles = (
+            discord.utils.get(message.guild.roles, name="Moderator"),
+            discord.utils.get(message.guild.roles, name="Administrator"))
+        mod = any([r in message.author.roles for r in mod_roles])
+        #Verify that the message @-mentions a role
+        role = None
+        for r in message.guild.roles:
+            logging.info(r.id)
+            if f"<@&{r.id}>" in message.content:
+                role = discord.utils.get(message.guild.roles, name=r.name)
+                logging.info(role)
+                break
+        logging.info(role)
+        if role is None:
+            return
+        #Create and send ping notification embed to #dev-build
+        embed = discord.Embed(
+            title="Potential Ghost Ping Detected", color=0xff0000)
+        fields = {"User": message.author.name, "Message": message.content}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        detection = datetime.datetime.now().strftime("%D %T")
+        embed.set_footer(text=f"Detected At: {detection}")
+        channel = discord.utils.get(message.guild.channels, name="dev-build")
+        await channel.send(embed=embed)
+        
     async def voice_control(self, payload):
         ''' Manages member voices in a game lobby if the user has a claim
 '''
@@ -297,6 +336,75 @@ class UtilityBot(commands.Bot):
         for r in message.reactions:
             await message.clear_reaction(r)
 
+    async def bounty_tickets(self, message):
+        guild = message.guild
+        channel = random.choice(guild.channels)
+        member = random.choice(guild.members)
+        if message.channel != channel and message.author != member:
+            return
+        role_regex = re.compile(r'_Guild Tickets: ([0-9]+)_')
+        tickets = 0
+        for role in member.roles:
+            if role_regex.search(role.name):
+                tickets = int(role_regex.search(role.name).group(1))
+                break
+        new_tickets = tickets + 1
+        old = f"_Guild Tickets: {tickets}_"
+        new = f"_Guild Tickets: {new_tickes}_"
+        old_role = discord.utils.get(guild.roles, name=old)
+        new_role = discord.utils.get(guild.roles, name=new)
+        if new_role is None:
+            await guild.create_role(name=new)
+            new_role = discord.utils.get(guild.roles, name=new)
+        await member.add_roles(new_role)
+        if old_role is not None:
+            await member.remove_roles(old_role)
+        all_tickets = [r.name for r in guild.roles\
+                       if role_regex.search(r.name) is not None]
+        if old_role and old_role not in all_tickets:
+            await old_role.delete()
+        embed = discord.Embed(
+            title=f"{member} Received a Bounty Ticket", color=0xff0000)
+        fields = {
+            "Tickets": "\n".join([
+                "Use your tickets to enter in the bounty",
+                "A random user will be chosen and awarded guild points"]),
+            "Total Tickets": new_tickets}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        await channel.send(embed=embed)
+        
+    async def award_bounty(self, message):
+        guild = message.guild
+        member = random.choice(guild.members)
+        #if message.channel != 'general' and message.author != member:
+        #    return
+        start = datetime.datetime.now()
+        end = start+datetime.timedelta(minutes=60)
+        start, end = time.time(), time.time()+360
+        embed = discord.Embed(title="New Bounty!", color=0xff0000)
+        fields = { 
+            "Win This Bounty": "\n".join([
+                "React with the below emojis to enter in this bounty",
+                "- Up to 10 entries are allowed",
+                "- At least 3 members must be entered"]),
+            "Bounty Start": start, "Bounty End": end}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        embed.set_footer("Time Remaning: 60 min, 0 sec")
+        channel = discord.utils.get(guild.channels, name='bounties')
+        message = await channel.send(embed=embed)
+        while True:
+            diff = (end-datetime.datetime.now()).get_seconds()
+            if diff <= 0:
+                break
+            minutes, seconds = divmod(diff, 60)
+            remaining = f"Time Reamining: {minutes} min, {seconds} sec"
+            embed = message.embeds[0]
+            embed_fields = embed.to_dict()
+            embed_fields['footer']['text'] = remaining
+            await message.edit(embed=embed)
+        
     def execute_commands(self):
         ''' Bot commands which can be used by users with the 'Member' role
 '''
