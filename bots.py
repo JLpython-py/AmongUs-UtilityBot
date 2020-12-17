@@ -89,7 +89,7 @@ class UtilityBot(commands.Bot):
         else:
             await message.delete()
             return
-        if message.channel.category in ['General', 'Among Us']:
+        if message.channel.category in ['General', 'Among Us', None]:
             await self.bounty_tickets(message)
             await self.award_bounty(message)
 
@@ -196,8 +196,8 @@ class UtilityBot(commands.Bot):
         #Give game lobby claim to user based on the emoji used
         lobbies = {
             u"\u0030\ufe0f\u20e3": 0, u"\u0031\ufe0f\u20e3": 1,
-            u"\u0030\ufe2f\u20e3": 2, u"\u0033\ufe0f\u20e3": 3,
-            u"\u0030\ufe4f\u20e3": 4}
+            u"\u0030\ufe0f\u20e3": 2, u"\u0033\ufe0f\u20e3": 3,
+            u"\u0030\ufe0f\u20e3": 4}
         lobby = f"Lobby {lobbies[reaction.name]}"
         claim_rname = f"_Claimed: {lobby}_"
         await guild.create_role(name=claim_rname)
@@ -340,6 +340,7 @@ class UtilityBot(commands.Bot):
         guild = message.guild
         channel = random.choice(guild.channels)
         member = random.choice(guild.members)
+        logging.info(channel)
         if message.channel != channel and message.author != member:
             return
         role_regex = re.compile(r'_Guild Tickets: ([0-9]+)_')
@@ -350,7 +351,7 @@ class UtilityBot(commands.Bot):
                 break
         new_tickets = tickets + 1
         old = f"_Guild Tickets: {tickets}_"
-        new = f"_Guild Tickets: {new_tickes}_"
+        new = f"_Guild Tickets: {new_tickets}_"
         old_role = discord.utils.get(guild.roles, name=old)
         new_role = discord.utils.get(guild.roles, name=new)
         if new_role is None:
@@ -372,7 +373,15 @@ class UtilityBot(commands.Bot):
             "Total Tickets": new_tickets}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
-        await channel.send(embed=embed)
+        message = await channel.send(embed=embed)
+        reactions = [
+            u"\u0030\ufe0f\u20e3", u"\u0031\ufe0f\u20e3",
+            u"\u0032\ufe0f\u20e3", u"\u0033\ufe0f\u20e3",
+            u"\u0034\ufe0f\u20e3", u"\u0035\ufe0f\u20e3",
+            u"\u0036\ufe0f\u20e3", u"\u0037\ufe0f\u20e3",
+            u"\u0038\ufe0f\u20e3", u"\u0039\ufe0f\u20e3"]
+        for r in reactions:
+            await message.add_reaction(r)
         
     async def award_bounty(self, message):
         guild = message.guild
@@ -380,8 +389,7 @@ class UtilityBot(commands.Bot):
         #if message.channel != 'general' and message.author != member:
         #    return
         start = datetime.datetime.now()
-        end = start+datetime.timedelta(minutes=60)
-        start, end = time.time(), time.time()+360
+        end = start+datetime.timedelta(minutes=1)
         embed = discord.Embed(title="New Bounty!", color=0xff0000)
         fields = { 
             "Win This Bounty": "\n".join([
@@ -391,19 +399,24 @@ class UtilityBot(commands.Bot):
             "Bounty Start": start, "Bounty End": end}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
-        embed.set_footer("Time Remaning: 60 min, 0 sec")
-        channel = discord.utils.get(guild.channels, name='bounties')
+        channel = discord.utils.get(guild.channels, name='dev-build')
         message = await channel.send(embed=embed)
+        reactions = [u"\u0031\ufe0f\u20e3", u"\u0032\ufe0f\u20e3",
+                     u"\u0033\ufe0f\u20e3", u"\u0034\ufe0f\u20e3",
+                     u"\u0035\ufe0f\u20e3", u"\u0036\ufe0f\u20e3",
+                     u"\u0037\ufe0f\u20e3", u"\u0038\ufe0f\u20e3",
+                     u"\u0039\ufe0f\u20e3"]
+        for r in reactions:
+            await message.add_reaction(r)
         while True:
-            diff = (end-datetime.datetime.now()).get_seconds()
+            diff = (end-datetime.datetime.now()).total_seconds()
             if diff <= 0:
                 break
-            minutes, seconds = divmod(diff, 60)
-            remaining = f"Time Reamining: {minutes} min, {seconds} sec"
-            embed = message.embeds[0]
-            embed_fields = embed.to_dict()
-            embed_fields['footer']['text'] = remaining
+            embed.set_footer(
+                text=f"Time Reamining: ~ {round(diff/60, 1)} minutes")
             await message.edit(embed=embed)
+        for r in message.reactions:
+            await message.clear_reactions(r)
         
     def execute_commands(self):
         ''' Bot commands which can be used by users with the 'Member' role
@@ -473,6 +486,18 @@ class UtilityBot(commands.Bot):
             for field in fields:
                 embed.add_field(name=field, value=fields[field])
             await ctx.send(embed=embed)
+
+        @self.command(name="comment", pass_context=True)
+        async def comment(ctx):
+            ''' Comment on a bug or suggestion of another use
+'''
+            if ctx.channel != 'bugs-and-suggestions':
+                return
+            logging.info(ctx.author.roles)
+            if "Moderator" not in [r.name for r in ctx.author.roles]:
+                await ctx.message.delete()
+                await ctx.send("You are not authorized to use this command")
+                return
 
         @self.command(name="give_points", pass_context=True)
         async def give_points(ctx, plus, nickname):
