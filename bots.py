@@ -73,10 +73,6 @@ class UtilityBot(commands.Bot):
            and "Direct Message" in str(message.channel):
             await ctx.send("Direct Message channels do not support commands")
             return
-<<<<<<< Updated upstream
-=======
-        #Check for Ghost Pings
-        await self.ghost_ping(message)
         #Award Bounty Tickets
         if message.channel.category.name in ['General', 'Among Us']:
             for i in range(50):
@@ -96,7 +92,6 @@ class UtilityBot(commands.Bot):
                     if random.choice([True, False]) == random.choice([True, False]):
                         await self.new_bounty(message)
                         break
->>>>>>> Stashed changes
         #Get the regular expression for the channel
         regex = re.compile(r'.*')
         for channel in self.regexes:
@@ -112,12 +107,13 @@ class UtilityBot(commands.Bot):
         else:
             await message.delete()
             return
-<<<<<<< Updated upstream
         if message.channel.category in ['General', 'Among Us']:
             await self.bounty_tickets(message)
             await self.award_bounty(message)
-=======
->>>>>>> Stashed changes
+
+    async def on_message_delete(self, message):
+        logging.info(f"Message Delete: {message}")
+        await self.ghost_ping(message)
 
     async def on_voice_state_update(self, member, before, after):
         logging.info(f"Voice State Update: {(member, before, after)}")
@@ -168,6 +164,8 @@ class UtilityBot(commands.Bot):
                 await message.remove_reaction(payload.emoji, payload.member)
 
     async def rule_agreement(self, payload):
+        '''
+'''
         #Get information from payload
         user = payload.member
         guild = self.get_guild(payload.guild_id)
@@ -181,7 +179,25 @@ class UtilityBot(commands.Bot):
         for field in fields:
             embed.add_field(name=field, value=fields[field])
         await direct_message.send(embed=embed)
-        
+
+    async def ghost_ping(self, message):
+        '''
+'''
+        if not message.raw_role_mentions:
+            return
+        roles = [discord.utils.get(message.guild.roles, id=i).name\
+                 for i in message.raw_role_mentions]
+        fields = {
+            "User": message.author.name, "Channel": message.channel.name,
+            "Message": message.content, "Role Mentions": ', '.join(roles)}
+        embed = discord.Embed(title="Ghost Ping Detected", color=0xff0000)
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        embed.set_footer(
+            text=f"Detected At: {datetime.datetime.now().strftime('%D %T')}")
+        channel = discord.utils.get(message.guild.channels, name='dev-build')
+        await channel.send(embed=embed)
+
     async def disconnect_with_claim(self, member, lobby):
         ''' Notifies user if they disconnected from their claimed game lobby
             Requests that they use the :Report: reaction to yield their claim
@@ -223,13 +239,8 @@ class UtilityBot(commands.Bot):
         #Give game lobby claim to user based on the emoji used
         lobbies = {
             u"\u0030\ufe0f\u20e3": 0, u"\u0031\ufe0f\u20e3": 1,
-<<<<<<< Updated upstream
-            u"\u0030\ufe2f\u20e3": 2, u"\u0033\ufe0f\u20e3": 3,
-            u"\u0030\ufe4f\u20e3": 4}
-=======
             u"\u0032\ufe0f\u20e3": 2, u"\u0033\ufe0f\u20e3": 3,
             u"\u0034\ufe0f\u20e3": 4}
->>>>>>> Stashed changes
         lobby = f"Lobby {lobbies[reaction.name]}"
         claim_rname = f"_Claimed: {lobby}_"
         await guild.create_role(name=claim_rname)
@@ -333,21 +344,11 @@ class UtilityBot(commands.Bot):
         await message.edit(embed=control_panel)
         await message.clear_reactions()
 
-<<<<<<< Updated upstream
-    def bounty_tickets(self, message):
-        guild = message.guild
-        channel = random.choice(guild.channels)
-        member = random.choice(guild.members)
-        if message.channel != channel and message.author != member:
-            return
-        role_regex = re.compile(r'_Guild Tickets: ([0-9]+)_')
-=======
     async def bounty_tickets(self, message):
         '''
 '''
         guild = message.guild
         role_regex = re.compile(r'_Bounty Tickets: ([0-9]+)_')
->>>>>>> Stashed changes
         tickets = 0
         #Verify that the user has the 'Member' role
         if 'Member' not in [r.name for r in message.author.roles]:
@@ -357,34 +358,32 @@ class UtilityBot(commands.Bot):
             if role_regex.search(role.name):
                 tickets = int(role_regex.search(role.name).group(1))
                 break
-<<<<<<< Updated upstream
-        new_tickets = tickets + 1
-        old = f"_Guild Tickets: {tickets}_"
-        new = f"_Guild Tickets: {new_tickes}_"
-=======
-        #Award a random number of tickets weighted by a Fibonacci sequence
-        fib = lambda n:functools.reduce(
-            lambda x,n:[x[1],x[0]+x[1]], range(n),[0,1])[0]
+        #Award a random number of tickets weighted by an exponential sequence
         plus = random.choices(
-            list(range(1, 10)), [1/fib(n) for n in range(1, 10)])[0]
+            list(range(1, 10)), [(1/2)**n for n in range(1, 10)])[0]
         new_tickets = tickets + plus
+        logging.info(new_tickets)
         #Generate roles for the new and old number of tickets
         old = f"_Bounty Tickets: {tickets}_"
         new = f"_Bounty Tickets: {new_tickets}_"
->>>>>>> Stashed changes
         old_role = discord.utils.get(guild.roles, name=old)
         new_role = discord.utils.get(guild.roles, name=new)
         #Create new role if does not already exist
         if new_role is None:
             await guild.create_role(name=new)
             new_role = discord.utils.get(guild.roles, name=new)
+        logging.info(new_role)
         #Add new role and remove old role to member, if possible
         await message.author.add_roles(new_role)
         if old_role is not None:
             await message.author.remove_roles(old_role)
         #Delete old role if it exists and no one else owns it
-        all_tickets = [r.name for r in guild.roles\
-                       if role_regex.search(r.name) is not None]
+        all_tickets = []
+        for r in guild.roles:
+            if role_regex.search(r.name) is None:
+                continue
+            if any([r in user.roles for user in guild.members]):
+                all_tickets.append(r)
         if old_role and old_role not in all_tickets:
             await old_role.delete()
         #Notify member
@@ -399,68 +398,7 @@ class UtilityBot(commands.Bot):
             "Total Tickets": new_tickets}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
-<<<<<<< Updated upstream
-        await channel.send(embed=embed)
-        
-    def award_bounty(self, message):
-=======
         await direct_message.send(embed=embed)
-        
-    async def new_bounty(self, message):
-        '''
-'''
->>>>>>> Stashed changes
-        guild = message.guild
-        #Create an embed announcing the new bounty
-        start = datetime.datetime.now()
-        end = start+datetime.timedelta(minutes=60)
-<<<<<<< Updated upstream
-        start, end = time.time(), time.time()+360
-        embed = discord.Embed(title="New Bounty!", color0xff0000)
-=======
-        embed = discord.Embed(title="New Bounty!", color=0xff0000)
->>>>>>> Stashed changes
-        fields = { 
-            "Win This Bounty": "\n".join([
-                "React with the below emojis to enter in this bounty",
-                "Up to 9 entries are allowed"]),
-            "Message": message.content, "Author": message.author.name,
-            "Bounty Start": start.strftime("%D %T"),
-            "Bounty End": end.strftime("%D %T")}
-        for field in fields:
-            embed.add_field(name=field, value=fields[field])
-<<<<<<< Updated upstream
-        embed.set_footer("Time Remaning: 60 min, 0 sec")
-        channel = discord.utils.get(guild.channels, name='bounties')
-        message = await channel.send(embed=embed)
-=======
-        channel = discord.utils.get(guild.channels, name='bounties')
-        message = await channel.send(embed=embed)
-        #Add reactions for members to enter the bounty with
-        reactions = [u"\u0031\ufe0f\u20e3", u"\u0032\ufe0f\u20e3",
-                     u"\u0033\ufe0f\u20e3", u"\u0034\ufe0f\u20e3",
-                     u"\u0035\ufe0f\u20e3", u"\u0036\ufe0f\u20e3",
-                     u"\u0037\ufe0f\u20e3", u"\u0038\ufe0f\u20e3",
-                     u"\u0039\ufe0f\u20e3"]
-        for r in reactions:
-            await message.add_reaction(r)
-        #Update the countdown until the bounty has ended
->>>>>>> Stashed changes
-        while True:
-            diff = (end-datetime.datetime.now()).get_seconds()
-            if diff <= 0:
-                break
-            minutes, seconds = divmod(diff, 60)
-            remaining = f"Time Reamining: {minutes} min, {seconds} sec"
-            embed = message.embeds[0]
-            embed_fields = embed.to_dict()
-            embed_fields['footer']['text'] = remaining
-            await message.edit(embed=embed)
-<<<<<<< Updated upstream
-=======
-        embed.set_footer(text="Bounty Ended")
-        await message.edit(embed=embed)
-        await self.award_bounty(message)
 
     async def bounty_entry(self, payload):
         '''
@@ -497,12 +435,14 @@ class UtilityBot(commands.Bot):
             embed = discord.Embed(
                 title="You don't have enough tickets!",
                 color=0xff0000)
+            embed.set_footer(text=f"Tickets: {tickets}")
             await direct_message.send(embed=embed)
             await message.remove_reaction(reaction, user)
             return
+        new_tickets = tickets - entries
         #Generate roles for the new and old number of tickets
         old = f"_Bounty Tickets: {tickets}_"
-        new = f"_Bounty Tickets: {tickets-entries}_"
+        new = f"_Bounty Tickets: {new_tickets}_"
         old_role = discord.utils.get(guild.roles, name=old)
         new_role = discord.utils.get(guild.roles, name=new)
         #Create new role if does not already exist
@@ -514,8 +454,12 @@ class UtilityBot(commands.Bot):
         if old_role is not None:
             await user.remove_roles(old_role)
         #Delete old role if it exists and no one else owns it
-        all_tickets = [r.name for r in guild.roles\
-                       if role_regex.search(r.name) is not None]
+        all_tickets = []
+        for r in guild.roles:
+            if role_regex.search(r.name) is None:
+                continue
+            if any([r in user.roles for user in guild.members]):
+                all_tickets.append(r)
         if old_role and old_role not in all_tickets:
             await old_role.delete()
         #Generate role for the number of entries
@@ -530,32 +474,70 @@ class UtilityBot(commands.Bot):
         embed = discord.Embed(
             title=f"You have entered the bounty with {entries} entries",
             color=0xff0000)
+        embed.set_footer(text=f"Tickets: {new_tickets}")
         await direct_message.send(embed=embed)
->>>>>>> Stashed changes
+
+    async def new_bounty(self, message):
+        '''
+'''
+        guild = message.guild
+        #Create an embed announcing the new bounty
+        start = datetime.datetime.now()
+        end = start+datetime.timedelta(minutes=1)
+        embed = discord.Embed(title="New Bounty!", color=0xff0000)
+        fields = { 
+            "Win This Bounty": "\n".join([
+                "React with the below emojis to enter in this bounty",
+                "Up to 9 entries are allowed"]),
+            "Message": message.content, "Author": message.author.name,
+            "Bounty Start": start.strftime("%D %T"),
+            "Bounty End": end.strftime("%D %T")}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        channel = discord.utils.get(guild.channels, name='bounties')
+        message = await channel.send(embed=embed)
+        #Add reactions for members to enter the bounty with
+        reactions = [u"\u0031\ufe0f\u20e3", u"\u0032\ufe0f\u20e3",
+                     u"\u0033\ufe0f\u20e3", u"\u0034\ufe0f\u20e3",
+                     u"\u0035\ufe0f\u20e3", u"\u0036\ufe0f\u20e3",
+                     u"\u0037\ufe0f\u20e3", u"\u0038\ufe0f\u20e3",
+                     u"\u0039\ufe0f\u20e3"]
+        for r in reactions:
+            await message.add_reaction(r)
+        #Update the countdown until the bounty has ended
+        while True:
+            diff = (end-datetime.datetime.now()).total_seconds()
+            if diff <= 0:
+                break
+            embed.set_footer(
+                text=f"Time Remaining: {round(diff/60, 1)}")
+            await message.edit(embed=embed)
+        embed.set_footer(text="Bounty Ended")
+        await message.edit(embed=embed)
+        await self.award_bounty(message)
         
     async def award_bounty(self, message):
         guild = message.guild
         #Get updated message
         channel = discord.utils.get(guild.channels, name='bounties')
         message = await channel.fetch_message(message.id)
-        entry_emojis = {
-            u"\u0031\ufe0f\u20e3": 1, u"\u0032\ufe0f\u20e3": 2,
-            u"\u0033\ufe0f\u20e3": 3, u"\u0034\ufe0f\u20e3": 4,
-            u"\u0035\ufe0f\u20e3": 5, u"\u0036\ufe0f\u20e3": 6,
-            u"\u0037\ufe0f\u20e3": 7, u"\u0038\ufe0f\u20e3": 8,
-            u"\u0039\ufe0f\u20e3": 9}
         #Get the users and number of entries per user, then clear all entries
+        role_regex = re.compile(r"_Bounty Entries: ([0-9])_")
         users, entries = [], []
-        for reaction in message.reactions:
-            async for user in reaction.users():
-                users.append(user)
-                entries.append(entry_emojis[reaction.emoji])
+        for member in guild.members:
+            for role in member.roles:
+                if role_regex.search(role.name) is None:
+                    continue
+                users.append(member)
+                entries.append(int(role_regex.search(role.name).group(1)))
         await message.clear_reactions()
         #Randomly select member weighted by the number of entries
         winner = random.choices(users, entries)[0]
-        #Randomly select the guild points weighted by an exponential function
-        points = random.choices(
-            list(range(1, 11)), [(1/2)**n for n in range(1, 11)])[0]
+        #Randomly select the guild points weighted by a Fibonacci sequence
+        fib = lambda n:functools.reduce(
+            lambda x,n:[x[1],x[0]+x[1]], range(n),[0,1])[0]
+        plus = random.choices(
+            list(range(1, 11)), [1/fib(n) for n in range(1, 11)])[0]
         #Delete all 'Bounty Entries' roles
         for n in range(1, 10):
             entry = f"_Bounty Entries: {n}_"
@@ -565,7 +547,56 @@ class UtilityBot(commands.Bot):
             await entry_role.delete()
         #Close bounty message
         embed = discord.Embed(title="Bounty Awarded", color=0xff0000)
+        fields = {
+            "Winner": winner.name, "Guild Points Won": plus}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
         await message.edit(embed=embed)
+        #Parse the member's roles for the number of guild points
+        role_regex = re.compile(r"_Guild Points: ([0-9]+)_")
+        points = 0
+        for r in winner.roles:
+            if role_regex.search(r.name):
+                points = int(role_regex.search(r.name).group(1))
+                break
+        new_points = points + plus
+        #Generate roles for the new and old number of points
+        old = f"_Guild Points: {points}_"
+        new = f"_Guild Points: {new_points}_"
+        old_role = discord.utils.get(guild.roles, name=old)
+        new_role = discord.utils.get(guild.roles, name=new)
+        #Create new role if does not already exist
+        if new_role is None:
+            await guild.create_role(name=new)
+            new_role = discord.utils.get(guild.roles, name=new)
+        #Add new role and remove old role to member, if possible
+        await winner.add_roles(new_role)
+        if old_role is not None:
+            await winner.remove_roles(old_role)
+        #Delete old role if it exists and no one else owns it
+        all_points = []
+        for r in guild.roles:
+            if role_regex.search(r.name) is None:
+                continue
+            if any([r in user.roles for user in guild.members]):
+                all_points.append(r)
+        if old_role and old_role not in all_points:
+            await old_role.delete()
+        #Check if the member has reached a new tier
+        for t in self.tiers:
+            if points < t <= new_points:
+                #Get tier which the member just reached
+                new_tier = self.tiers[t]
+                tier_role = discord.utils.get(
+                    guild.roles, name=new_tier)
+                #Create and send a congratulatory embed
+                direct_message = await winner.create_dm()
+                embed = discord.Embed(
+                    title="New Role Achieved!", color=tier_role.color)
+                embed.add_field(name="New Role", value=new_tier)
+                embed.add_field(name="Granted to", value=winner.name)
+                await winner.add_roles(tier_role)
+                await direct_message.send(embed=embed)
 
     def execute_commands(self):
         ''' Bot commands which can be used by users with the 'Member' role
@@ -636,8 +667,6 @@ class UtilityBot(commands.Bot):
                 embed.add_field(name=field, value=fields[field])
             await ctx.send(embed=embed)
 
-<<<<<<< Updated upstream
-=======
         @self.command(name="get_tickets", pass_context=True)
         async def get_tickets(ctx):
             #Parse through member roles to get tickets
@@ -659,15 +688,14 @@ class UtilityBot(commands.Bot):
         async def comment(ctx):
             ''' Comment on a bug or suggestion of another use
 '''
-            if ctx.channel != 'bugs-and-suggestions':
+            if ctx.channel.name != 'bugs-and-suggestions':
                 return
-            logging.info(ctx.author.roles)
+            #Verify that the user has the 'Moderator' role
             if "Moderator" not in [r.name for r in ctx.author.roles]:
                 await ctx.message.delete()
                 await ctx.send("You are not authorized to use this command")
                 return
 
->>>>>>> Stashed changes
         @self.command(name="give_points", pass_context=True)
         async def give_points(ctx, nickname, plus):
             ''' Give guild points to a user
@@ -697,15 +725,19 @@ class UtilityBot(commands.Bot):
             new_role = discord.utils.get(ctx.guild.roles, name=new)
             #Create new role if does not already exist
             if new_role is None:
-                await guild.create_role(name=new)
+                await ctx.guild.create_role(name=new)
                 new_role = discord.utils.get(ctx.guild.roles, name=new)
             #Add new role and remove old role to member, if possible
             await member.add_roles(new_role)
             if old_role is not None:
                 await member.remove_roles(old_role)
             #Delete old role if it exists and no one else owns it
-            all_points = [r.name for r in guild.roles\
-                          if role_regex.search(r.name) is not None]
+            all_points = []
+            for r in ctx.guild.roles:
+                if role_regex.search(r.name) is None:
+                    continue
+                if any([r in user.roles for user in ctx.guild.members]):
+                    all_points.append(r)
             if old_role and old_role not in all_points:
                 await old_role.delete()
             #Check if the member has reached a new tier
