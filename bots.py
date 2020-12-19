@@ -75,23 +75,17 @@ class UtilityBot(commands.Bot):
             return
         #Award Bounty Tickets
         if message.channel.category.name in ['General', 'Among Us']:
-            for i in range(50):
-                guild = message.guild
-                rand_channel = random.choice(
-                    discord.utils.get(
-                        guild.categories, name=message.channel.category.name
-                        ).channels)
-                rand_member = random.choice(guild.members)
-                logging.info((
-                    (rand_channel.name, message.channel.name),
-                    (rand_member.name, message.author.name)))
-                if rand_member.name == message.author.name\
-                   and rand_channel.name == message.channel.name:
-                    await self.bounty_tickets(message)
-                    #if random.randint(1, 15) == random.randint(1, 15):
-                    if random.choice([True, False]) == random.choice([True, False]):
-                        await self.new_bounty(message)
-                        break
+            guild = message.guild
+            rand_channel = random.choice(
+                discord.utils.get(
+                    guild.categories, name=message.channel.category.name
+                    ).channels)
+            rand_member = random.choice(guild.members)
+            if rand_member.name == message.author.name\
+               and rand_channel.name == message.channel.name:
+                await self.bounty_tickets(message)
+                if random.randint(1, 15) == random.randint(1, 15):
+                    await self.new_bounty(message)
         #Get the regular expression for the channel
         regex = re.compile(r'.*')
         for channel in self.regexes:
@@ -107,7 +101,7 @@ class UtilityBot(commands.Bot):
         else:
             await message.delete()
             return
-        if message.channel.category in ['General', 'Among Us']:
+        if message.channel.category in ['General', 'Among Us', None]:
             await self.bounty_tickets(message)
             await self.award_bounty(message)
 
@@ -268,6 +262,38 @@ class UtilityBot(commands.Bot):
         for reaction in reactions:
             await message.add_reaction(reaction)
 
+    async def ghost_ping(self, message):
+        ''' Detects when a member @-mentions a role to prevent ghost pings
+'''
+        if '@' not in message.content:
+            return
+        #Verify that the author is not moderator or administrator
+        mod_roles = (
+            discord.utils.get(message.guild.roles, name="Moderator"),
+            discord.utils.get(message.guild.roles, name="Administrator"))
+        mod = any([r in message.author.roles for r in mod_roles])
+        #Verify that the message @-mentions a role
+        role = None
+        for r in message.guild.roles:
+            logging.info(r.id)
+            if f"<@&{r.id}>" in message.content:
+                role = discord.utils.get(message.guild.roles, name=r.name)
+                logging.info(role)
+                break
+        logging.info(role)
+        if role is None:
+            return
+        #Create and send ping notification embed to #dev-build
+        embed = discord.Embed(
+            title="Potential Ghost Ping Detected", color=0xff0000)
+        fields = {"User": message.author.name, "Message": message.content}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        detection = datetime.datetime.now().strftime("%D %T")
+        embed.set_footer(text=f"Detected At: {detection}")
+        channel = discord.utils.get(message.guild.channels, name="dev-build")
+        await channel.send(embed=embed)
+        
     async def voice_control(self, payload):
         ''' Manages member voices in a game lobby if the user has a claim
 '''
