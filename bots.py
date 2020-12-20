@@ -69,22 +69,23 @@ class UtilityBot(commands.Bot):
         #Ignore all bot messages
         if message.author.bot:
             return
+        #Reject any commands in direct message channels
         if message.content.startswith('*')\
            and "Direct Message" in str(message.channel):
             await ctx.send("Direct Message channels do not support commands")
             return
         #Award Bounty Tickets
-        if message.channel.category.name in ['General', 'Among Us']:
+        if message.channel.category and\
+           message.channel.category.name in ['General', 'Among Us']:
             guild = message.guild
             rand_channel = random.choice(
                 discord.utils.get(
                     guild.categories, name=message.channel.category.name
                     ).channels)
             rand_member = random.choice(guild.members)
-            if rand_member.name == message.author.name\
-               and rand_channel.name == message.channel.name:
+            if rand_channel.name == message.channel.name:
                 await self.bounty_tickets(message)
-                if random.randint(1, 15) == random.randint(1, 15):
+                if rand_member.name == message.author.name:
                     await self.new_bounty(message)
         #Get the regular expression for the channel
         regex = re.compile(r'.*')
@@ -101,12 +102,10 @@ class UtilityBot(commands.Bot):
         else:
             await message.delete()
             return
-        if message.channel.category in ['General', 'Among Us', None]:
-            await self.bounty_tickets(message)
-            await self.award_bounty(message)
 
     async def on_message_delete(self, message):
         logging.info(f"Message Delete: {message}")
+        #Check deleted message for ghost ping
         await self.ghost_ping(message)
 
     async def on_voice_state_update(self, member, before, after):
@@ -134,7 +133,7 @@ class UtilityBot(commands.Bot):
         #Ignore bot reactions
         if payload.member.bot:
             return
-        #Check reaction properties for control panel usage
+        #Check if the reaction was used as a command
         channel = self.get_channel(payload.channel_id)
         if channel.name == 'rules':
             name = payload.emoji.name
@@ -149,9 +148,10 @@ class UtilityBot(commands.Bot):
                 u"\u0030\ufe2f\u20e3", u"\u0033\ufe0f\u20e3",
                 u"\u0030\ufe4f\u20e3"]:
                 await self.claim_lobby(payload)
-            elif name in ["Shhh", "Emergency_Meeting", "Report"]:
+            elif name in [
+                b'\xf0\x9f\x94\x87'.decode(), b'\xf0\x9f\x94\x88'.decode()]:
                 await self.voice_control(payload)
-            elif name in ["Kill"]:
+            elif name in [b'\xf0\x9f\x8f\xb3\xef\xb8\x8f'.decode()]:
                 await self.yield_claim(payload)
             else:
                 message = await channel.fetch_message(payload.message_id)
@@ -175,7 +175,7 @@ class UtilityBot(commands.Bot):
         await direct_message.send(embed=embed)
 
     async def ghost_ping(self, message):
-        '''
+        ''' Flag message if a role was mentioned in a deleted message
 '''
         if not message.raw_role_mentions:
             return
@@ -205,7 +205,7 @@ class UtilityBot(commands.Bot):
                 f"You recently disconnected from {lobby}, which you claimed.",
                 "If you are still using this lobby, ignore this message.",
                 "Othersiwse, yield your claim using the control panel"]),
-            "Yield Claim": "React with <:Kill:777210412269043773>"}
+            "Yield Claim": "React with :flag_white:"}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
         await direct_message.send(embed=embed)
@@ -247,18 +247,18 @@ class UtilityBot(commands.Bot):
             "Claimed": f"You have successfully claimed {lobby}",
             "Voice Control": '\n'.join([
                 f"You now have control of the voices in {lobby}",
-                "Mute:\t<:Shhh:777210413929463808>",
-                "Unmute:\t<:Report:777211184881467462><:Meeting:777211033655574549>"]),
+                f"Mute:\t:mute:",
+                "Unmute:\t:speaker:"]),
             "Yield": '\n'.join([
                 "Please yield your claim when you are finished",
-                "Yield:\t<:Kill:777210412269043773>"])}
+                "Yield:\t:flag_white:"])}
         for field in fields:
             control_panel.add_field(name=field, value=fields[field])
         control_panel.set_footer(text=lobby)
         message = await channel.send(embed=control_panel)
         reactions = [
-            "<:Shhh:777210413929463808>", "<:Report:777211184881467462>",
-            "<:Meeting:777211033655574549>", "<:Kill:777210412269043773>"]
+            b'\xf0\x9f\x94\x87'.decode(), b'\xf0\x9f\x94\x88'.decode(),
+            b'\xf0\x9f\x8f\xb3\xef\xb8\x8f'.decode()]
         for reaction in reactions:
             await message.add_reaction(reaction)
 
@@ -795,7 +795,7 @@ class UtilityBot(commands.Bot):
                 if regex.search(role.name) is None:
                     continue
                 await ctx.send("You cannot claim multiple game lobbies")
-                return
+                #return
             embed = discord.Embed(
                 title="Game Lobby Claim Panel", color=0x00ff00)
             fields = {"Claim": "Use the reactions below to claim a lobby"}
