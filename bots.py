@@ -704,30 +704,50 @@ class UtilityBot(commands.Bot):
             #Ignore messages outside #utility-bots
             if ctx.message.channel.name != 'utility-bots':
                 return
-            #Use a RegEx to check if user has already claimed a game lobby
+            #Verify that the member has not already claimed a game lobby
             regex = re.compile(r"_Claimed: (Lobby [0-9])_")
             for role in ctx.author.roles:
                 if regex.search(role.name) is None:
                     continue
                 await ctx.send("You cannot claim multiple game lobbies")
-                #return
-            embed = discord.Embed(
-                title="Game Lobby Claim Panel", color=0x00ff00)
-            fields = {"Claim": "Use the reactions below to claim a lobby"}
-            for field in fields:
-                embed.add_field(name=field, value=fields[field])
-            embed.set_footer(text=ctx.author.name)
-            message = await ctx.send(embed=embed)
-            reactions = {
-                "Lobby 0": u"\u0030\ufe0f\u20e3",
-                "Lobby 1": u"\u0031\ufe0f\u20e3",
-                "Lobby 2": u"\u0032\ufe0f\u20e3",
-                "Lobby 3": u"\u0033\ufe0f\u20e3",
-                "Lobby 4": u"\u0034\ufe0f\u20e3"}
-            for lobby in reactions:
-                role = f"_Claimed: {lobby}_"
-                if discord.utils.get(ctx.guild.roles, name=role) is None:
-                    await message.add_reaction(reactions[lobby])
+                return
+            await GameLobbyControl(ctx, category="Game Lobbies")
+
+class GameLobbyControl:
+    async def __init__(self, context, *, category):
+        self.regex = re.compile(r"_Claimed: (Lobby [0-9])_")
+        self.guild = context.guild
+        self.category = discord.utils.get(
+            self.guild.categories, name=category)
+        self.channels = self.category.channels
+        self.member = context.author
+        await self.send_control_panel()
+
+    async def send_claim_panel(self):
+        embed = discord.Embed(
+            title="Game Lobby Control", color=0x00ff00)
+        fields = {
+            "Claim": "Use the reactions below to claim a lobby",
+            "Cancel": "React with :x: to cancel"}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        embed.set_footer(text=self.member.name)
+        message = await context.send(embed=embed)
+        await add_control_reactions(self, message)
+
+    async def add_claim_reactions(self, message):
+        reactions = {}
+        for num, channel in enumerate(self.channels):
+            emoji = str(num).encode()+b'\xef\xb8\x8f\xe2\x83\xa3'
+            reactions.setdefault(channel, emoji)
+        for lobby in reactions:
+            role = f"_Claimed: {lobby}_"
+            if discord.utils.get(self.guild.roles, name=role) is None:
+                await message.add_reaction(reactions[lobby].decode())
+        await message.add_reaction(b'\xf0\x9f\x97\x99'.decode())
+
+    async def claim_lobby(self, payload):
+        pass
 
 def main():
     ''' Create and run UtilityBot instances
