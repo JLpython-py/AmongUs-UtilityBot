@@ -9,6 +9,7 @@ import asyncio
 import csv
 import datetime
 import functools
+import json
 import logging
 import os
 import random
@@ -22,10 +23,9 @@ logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(levelname)s - %
 class UtilityBot(commands.Bot):
     ''' 
 '''
-    def __init__(self, *, command_prefix, name):
+    def __init__(self, *, command_prefix, name, command_channels):
         '''
 '''
-        self.name = name
         #Manage intents to allow bot to view all members
         intents = discord.Intents.default()
         intents.members = True
@@ -38,17 +38,20 @@ class UtilityBot(commands.Bot):
         with open(os.path.join('data', 'tiers.csv')) as file:
             self.tiers = dict(list(csv.reader(file)))
             self.tiers = {int(k):v for k, v in self.tiers.items()}
+        self.name = name
+        self.command_channels = command_channels
+        self.lobby_claims = {}
         self.execute_commands()
 
     async def on_ready(self):
         ''' 
 '''
-        logging.info("Ready: %(self.name)")
+        logging.info("Ready: %(self.name)s")
 
     async def on_member_join(self, member):
         '''
 '''
-        logging.info("Member Join: %(member)")
+        logging.info("Member Join: %(member)s")
         if member.bot:
             return
         direct_message = await member.create_dm()
@@ -77,7 +80,7 @@ class UtilityBot(commands.Bot):
         await direct_message.send(embed=embed)
 
     async def on_message(self, message):
-        logging.info("Message: %(message)")
+        logging.info("Message: %(message)s")
         #Ignore all bot messages
         if message.author.bot:
             return
@@ -117,12 +120,12 @@ class UtilityBot(commands.Bot):
             return
 
     async def on_message_delete(self, message):
-        logging.info("Message Delete: %(message)")
+        logging.info("Message Delete: %(message)s")
         #Check deleted message for ghost ping
         await self.ghost_ping(message)
 
     async def on_voice_state_update(self, member, before, after):
-        logging.info("Voice State Update: %((member, before, after))")
+        logging.info("Voice State Update: %((member, before, after))s")
         #If the user disconnected, check if the user had a game lobby claim
         if before.channel and after.channel is None:
             regex = re.compile(r"_Claimed: (Lobby [0-9])_")
@@ -142,33 +145,34 @@ class UtilityBot(commands.Bot):
                     await member.edit(mute=True)
 
     async def on_raw_reaction_add(self, payload):
-        logging.info("Raw Reaction Add: %(payload")
+        logging.info("Raw Reaction Add: %(payload)s")
         #Ignore bot reactions
         if payload.member.bot:
             return
         #Check if the reaction was used as a command
         channel = self.get_channel(payload.channel_id)
+        name = payload.emoji.name
         if channel.name == 'rules':
-            name = payload.emoji.name
             if name in [u"\u2705"]:
                 await self.rule_agreement(payload)
         elif channel.name == 'bounties':
             await self.bounty_entry(payload)
         elif channel.name == 'utility-bots':
-            name = payload.emoji.name
+            control = self.lobby_claims.get(payload.member.name)
             if name in [
                 u"\u0030\ufe0f\u20e3", u"\u0031\ufe0f\u20e3",
                 u"\u0030\ufe2f\u20e3", u"\u0033\ufe0f\u20e3",
                 u"\u0030\ufe4f\u20e3"]:
-                await self.claim_lobby(payload)
-            elif name in [
-                b'\xf0\x9f\x94\x87'.decode(), b'\xf0\x9f\x94\x88'.decode()]:
-                await self.voice_control(payload)
-            elif name in [b'\xf0\x9f\x8f\xb3\xef\xb8\x8f'.decode()]:
-                await self.yield_claim(payload)
-            else:
-                message = await channel.fetch_message(payload.message_id)
-                await message.remove_reaction(payload.emoji, payload.member)
+                await control.claim_lobby(payload)
+            elif name == u'\u274c':
+                await control.cancel_claim()
+                del self.lobby_claims[payload.member.name]
+            elif name.encode() in [
+                b'\xf0\x9f\x94\x87', b'\xf0\x9f\x94\x88']:
+                await control.voice_control(payload)
+            elif name.encode() == b'\xf0\x9f\x8f\xb3\xef\xb8\x8f':
+                await control.yield_control()
+                del self.lobby_claims[payload.member.name]
 
     async def rule_agreement(self, payload):
         '''
@@ -222,136 +226,6 @@ class UtilityBot(commands.Bot):
         for field in fields:
             embed.add_field(name=field, value=fields[field])
         await direct_message.send(embed=embed)
-
-    async def claim_lobby(self, payload):
-        ''' Allows user to claim voice control over a game lobby
-            Sends a voice control panel for the user to mute/unmute members
-'''
-        #Get information from payload
-        channel = self.get_channel(payload.channel_id)
-        guild = self.get_guild(payload.guild_id)
-        message = await channel.fetch_message(payload.message_id)
-        #Verify that the user requested the claim panel
-        claim_panel = message.embeds[0]
-        claim_fields = claim_panel.to_dict()
-        if payload.member.name != claim_fields['footer']['text']:
-            await channel.send("You did not request this claim panel")
-            await message.remove_reaction(payload.emoji, payload.member)
-            return
-        #Indicate to all members that the claim panel is inactive
-        claim_panel.title = f"{claim_panel.title} [CLOSED]"
-        await message.edit(embed=claim_panel)
-        await message.clear_reactions()
-        #Give game lobby claim to user based on the emoji used
-        lobbies = {
-            u"\u0030\ufe0f\u20e3": "Lobby 0",
-            u"\u0031\ufe0f\u20e3": "Lobby 1",
-            u"\u0032\ufe0f\u20e3": "Lobby 2",
-            u"\u0033\ufe0f\u20e3": "Lobby 3",
-            u"\u0034\ufe0f\u20e3": "Lobby 4"}
-        lobby = lobbies[payload.emoji.name]
-        await guild.create_role(name=f"_Claimed: {lobby}_")
-        claim_role = discord.utils.get(
-            guild.roles, name=f"_Claimed: {lobby}_")
-        await payload.member.add_roles(claim_role)
-        #Create and send game lobby control panel
-        control_panel = discord.Embed(
-            title="Game Lobby Control Panel", color=0x00ff00)
-        fields = {
-            "Claimed": f"You have successfully claimed {lobby}",
-            "Voice Control": '\n'.join([
-                f"You now have control of the voices in {lobby}",
-                "Mute:\t:mute:",
-                "Unmute:\t:speaker:"]),
-            "Yield": '\n'.join([
-                "Please yield your claim when you are finished",
-                "Yield:\t:flag_white:"])}
-        for field in fields:
-            control_panel.add_field(name=field, value=fields[field])
-        control_panel.set_footer(text=lobby)
-        message = await channel.send(embed=control_panel)
-        reactions = [
-            b'\xf0\x9f\x94\x87'.decode(),
-            b'\xf0\x9f\x94\x88'.decode(),
-            b'\xf0\x9f\x8f\xb3\xef\xb8\x8f'.decode()]
-        for reaction in reactions:
-            await message.add_reaction(reaction)
-
-    async def voice_control(self, payload):
-        ''' Manages member voices in a game lobby if the user has a claim
-'''
-        #Get information from payload
-        channel = self.get_channel(payload.channel_id)
-        guild = self.get_guild(payload.guild_id)
-        message = await channel.fetch_message(payload.message_id)
-        #Verify that the user has a claim on the game lobby
-        claim_role, regex = None, re.compile(r"_Claimed: (Lobby [0-9])_")
-        for role in payload.member.roles:
-            if regex.search(role.name):
-                claim_role = regex.search(role.name).group()
-                lobby = regex.search(role.name).group(1)
-                break
-        if claim_role is None:
-            await channel.send("You have not claimed any of the game lobbies")
-            await message.remove_reaction(payload.emoji, payload.member)
-            return
-        #Verify that the user is using the correct control panel
-        claim_panel = message.embeds[0]
-        claim_fields = claim_panel.to_dict()
-        if lobby != claim_fields['footer']['text']:
-            claim = claim_fields['footer']['text']
-            await channel.send(f"You do not have a claim on {claim}")
-            await message.remove_reaction(payload.emoji, payload.member)
-            return
-        #Manage the voices based on the emoji used
-        lobby = discord.utils.get(guild.channels, name=lobby)
-        controls = {
-            b'\xf0\x9f\x94\x87'.decode(): True,
-            b'\xf0\x9f\x94\x88'.decode(): False}
-        if not lobby.members:
-            await channel.send(f"There are no members in {lobby}")
-        else:
-            for member in lobby.members:
-                await member.edit(mute=controls[payload.emoji.name])
-        await message.remove_reaction(payload.emoji, payload.member)
-
-    async def yield_claim(self, payload):
-        '''
-'''
-        #Get information from payload
-        channel = self.get_channel(payload.channel_id)
-        guild = self.get_guild(payload.guild_id)
-        message = await channel.fetch_message(payload.message_id)
-        #Verify that the user has a claim on the game lobby
-        claim_role, regex = None, re.compile(r"_Claimed: (Lobby [0-9])_")
-        for role in payload.member.roles:
-            if regex.search(role.name):
-                claim_role = regex.search(role.name).group()
-                lobby = regex.search(role.name).group(1)
-                break
-        if claim_role is None:
-            await channel.send("You have not claimed any of the game lobbies")
-            await message.remove_reaction(payload.emoji, payload.member)
-            return
-        #Verify that the user is using the correct control pannel
-        control_panel = message.embeds[0]
-        control_fields = control_panel.to_dict()
-        if lobby != control_fields['footer']['text']:
-            claim = control_fields['footer']['text']
-            await channel.send(f"You do not have a claim on {claim}")
-            await message.remove_reaction(payload.emoji, payload.member)
-            return
-        #Delete the role indicating the user's claim on the game lobby
-        claim_role = discord.utils.get(guild.roles, name=claim_role)
-        await claim_role.delete()
-        #Indicate to all members that the control panel is inactive
-        control_panel.title = f"{control_panel.title} [CLOSED]"
-        control_panel.clear_fields()
-        fields = {"Yielded": f"You have successfully yielded {lobby}"}
-        for field in fields:
-            control_panel.add_field(name=field, value=fields[field])
-        await message.edit(embed=control_panel)
-        await message.clear_reactions()
 
     async def bounty_tickets(self, message):
         '''
@@ -702,7 +576,7 @@ class UtilityBot(commands.Bot):
             ''' Claim control of a voice channel in Game Lobbies
 '''
             #Ignore messages outside #utility-bots
-            if ctx.message.channel.name != 'utility-bots':
+            if ctx.message.channel.name != self.command_channels['claim']:
                 return
             #Verify that the member has not already claimed a game lobby
             regex = re.compile(r"_Claimed: (Lobby [0-9])_")
@@ -711,57 +585,141 @@ class UtilityBot(commands.Bot):
                     continue
                 await ctx.send("You cannot claim multiple game lobbies")
                 return
-            await GameLobbyControl(ctx, category="Game Lobbies")
+            control = GameLobbyControl(
+                ctx,
+                category="Game Lobbies",
+                channel=self.command_channels['claim']
+                )
+            self.lobby_claims.setdefault(ctx.author.name, control)
+            await control.send_panel()
+            await control.add_panel_reactions()
+            await ctx.message.delete()
 
 class GameLobbyControl:
-    async def __init__(self, context, *, category):
+    def __init__(self, context, *, category, channel):
+        self.context = context
         self.regex = re.compile(r"_Claimed: (Lobby [0-9])_")
-        self.guild = context.guild
+        self.guild = self.context.guild
         self.category = discord.utils.get(
             self.guild.categories, name=category)
-        self.channels = self.category.channels
-        self.member = context.author
-        await self.send_control_panel()
+        self.lobbies = self.category.channels
+        self.member = self.context.author
+        self.channel = discord.utils.get(
+            self.guild.channels, name=channel)
 
-    async def send_claim_panel(self):
+    async def send_panel(self):
         embed = discord.Embed(
-            title="Game Lobby Control", color=0x00ff00)
+            title="Game Lobby Claim", color=0x00ff00)
         fields = {
             "Claim": "Use the reactions below to claim a lobby",
-            "Cancel": "React with :x: to cancel"}
+            "Cancel": "React with :x: to cancel"
+            }
         for field in fields:
             embed.add_field(name=field, value=fields[field])
         embed.set_footer(text=self.member.name)
-        message = await context.send(embed=embed)
-        await add_control_reactions(self, message)
+        self.panel = await self.context.channel.send(embed=embed)
 
-    async def add_claim_reactions(self, message):
-        reactions = {}
-        for num, channel in enumerate(self.channels):
+    async def add_panel_reactions(self):
+        for num, channel in enumerate(self.lobbies):
             emoji = str(num).encode()+b'\xef\xb8\x8f\xe2\x83\xa3'
-            reactions.setdefault(channel, emoji)
-        for lobby in reactions:
-            role = f"_Claimed: {lobby}_"
+            role = f"_Claimed: {channel}_"
             if discord.utils.get(self.guild.roles, name=role) is None:
-                await message.add_reaction(reactions[lobby].decode())
-        await message.add_reaction(b'\xf0\x9f\x97\x99'.decode())
+                await self.panel.add_reaction(emoji.decode())
+        await self.panel.add_reaction(u'\u274c')
+
+    async def cancel_claim(self):
+        await self.panel.clear_reactions()
+        embed = discord.Embed(
+            title="Game Lobby Claim Canceled", color=0x00ff00)
+        await self.panel.edit(embed=embed)
+        await asyncio.sleep(10)
+        await self.panel.delete()
 
     async def claim_lobby(self, payload):
-        pass
+        #Grant member game lobby claim based on the emoji used
+        num = payload.emoji.name[0]
+        self.lobby = discord.utils.get(
+            self.lobbies, name=f"Lobby {num}")
+        await self.guild.create_role(name=f"_Claimed: {self.lobby.name}_")
+        role = discord.utils.get(
+            self.guild.roles, name=f"_Claimed: {self.lobby.name}_")
+        await self.member.add_roles(role)
+        #Edit panel for game lobby member voice control
+        await self.panel.clear_reactions()
+        embed = discord.Embed(
+            title="Game Lobby Control Panel", color=0x00ff00)
+        fields = {
+            "Claimed": f"You have successfully claimed Lobby {num}",
+            "Voice Control": '\n'.join([
+                f"You can control the voices of the members of Lobby {num}",
+                "Mute with :mute:",
+                "Unmute with :speaker:"
+                ]),
+            "Yield": '\n'.join([
+                "Yield your claim on the game lobby when you are finished",
+                "Yield with :flag_white:"
+                ])}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        await self.panel.edit(embed=embed)
+        #Add reactions to allow member to control member voices
+        reactions = [
+            b'\xf0\x9f\x94\x87',
+            b'\xf0\x9f\x94\x88',
+            b'\xf0\x9f\x8f\xb3\xef\xb8\x8f'
+            ]
+        for reaction in reactions:
+            await self.panel.add_reaction(reaction.decode())
+
+    async def voice_control(self, payload):
+        #Manage the voices of the members based on the emoji used
+        controls = {
+            b'\xf0\x9f\x94\x87': True,
+            b'\xf0\x9f\x94\x88': False
+            }
+        if not self.lobby.members:
+            await self.channel.send(
+                f"There are no members in {self.lobby.name}")
+        else:
+            for member in self.lobby.members:
+                await member.edit(mute=controls[payload.emoji.name.encode()])
+        await self.panel.remove_reaction(payload.emoji, self.member)
+
+    async def yield_control(self):
+        #Delete the claim role that was granted to the member
+        role = discord.utils.get(
+            self.guild.roles, name=f"_Claimed: {self.lobby.name}_")
+        await role.delete()
+        #Close control panel
+        embed = discord.Embed(
+            title="Game Lobby Control Panel Closed", color=0x00ff00)
+        fields = {
+            "Yielded": f"You have successfully yielded {self.lobby.name}"
+            }
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        await self.panel.edit(embed=embed)
+        await self.panel.clear_reactions()
+        await asyncio.sleep(10)
+        await self.panel.delete()
 
 def main():
     ''' Create and run UtilityBot instances
 '''
-    bots = {
+    tokens = {
         "Utils": os.environ.get("UTILS", None)}
-    if None in bots.values():
+    if None in tokens.values():
         with open(os.path.join('data', 'tokens.csv')) as file:
-            bots = dict(list(csv.reader(file, delimiter='\t')))
+            tokens = dict(list(csv.reader(file, delimiter='\t')))
+    with open(os.path.join('data', 'command_channels.txt')) as file:
+        command_channels = json.load(file)
     loop = asyncio.get_event_loop()
-    for bot in bots:
-        token = bots[bot]
-        discord_bot = UtilityBot(command_prefix="*", name=bot)
-        loop.create_task(discord_bot.start(token))
+    for bot in tokens:
+        discord_bot = UtilityBot(
+            command_prefix="*",
+            name=bot,
+            command_channels=command_channels)
+        loop.create_task(discord_bot.start(tokens[bot]))
     loop.run_forever()
 
 if __name__ == '__main__':
