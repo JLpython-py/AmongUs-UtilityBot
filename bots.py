@@ -14,6 +14,7 @@ import logging
 import os
 import random
 import re
+import string
 
 import discord
 from discord.ext import commands
@@ -40,6 +41,7 @@ class UtilityBot(commands.Bot):
             self.tiers = {int(k):v for k, v in self.tiers.items()}
         self.name = name
         self.command_channels = command_channels
+        self.censor = Censor()
         self.lobby_claims = {}
         self.execute_commands()
 
@@ -90,6 +92,8 @@ class UtilityBot(commands.Bot):
             await message.channel.send(
                 "Direct Message channels do not support commands")
             return
+        #Parse message for any blacklisted words
+        await self.censor.parse(message)
         #Award Bounty Tickets
         if message.channel.category and\
            message.channel.category.name in ['General', 'Among Us']:
@@ -595,7 +599,34 @@ class UtilityBot(commands.Bot):
             await control.add_panel_reactions()
             await ctx.message.delete()
 
-class GameLobbyControl:
+class Censor:
+    def __init__(self):
+        self.file = os.path.join('data', 'blacklisted_words.txt')
+        with open(self.file) as file:
+            self.blacklist = file.read().split('\n')
+        self.separators = string.punctuation+string.digits+string.whitespace
+
+    async def parse(self, message):
+        profane = False
+        for word in self.blacklist:
+            regex = re.compile(fr'[{self.separators}]*'.join(list(word)))
+            if regex.search(message.content) is not None:
+                profane = True
+                break
+        if not profane:
+            return
+        embed = discord.Embed(
+            title="Blacklisted Word Detected in Message :no_entry_sign:",
+            color=0xff0000)
+        embed.add_field(
+            name="You aren't allowed to say that!",
+            value=message.author.mention)
+        notification = await message.channel.send(embed=embed)
+        await message.delete()
+        await asyncio.sleep(10)
+        await notification.delete()
+        
+class VoiceChannelControl:
     def __init__(self, context, *, category, channel):
         self.context = context
         self.regex = re.compile(r"_Claimed: (Lobby [0-9])_")
@@ -630,7 +661,7 @@ class GameLobbyControl:
     async def cancel_claim(self):
         await self.panel.clear_reactions()
         embed = discord.Embed(
-            title="Game Lobby Claim Canceled", color=0x00ff00)
+            title="Voice Channel Claim Canceled", color=0x00ff00)
         await self.panel.edit(embed=embed)
         await asyncio.sleep(10)
         await self.panel.delete()
@@ -647,7 +678,7 @@ class GameLobbyControl:
         #Edit panel for game lobby member voice control
         await self.panel.clear_reactions()
         embed = discord.Embed(
-            title="Game Lobby Control Panel", color=0x00ff00)
+            title="Voice Channel Control Panel", color=0x00ff00)
         fields = {
             "Claimed": f"You have successfully claimed Lobby {num}",
             "Voice Control": '\n'.join([
@@ -692,7 +723,7 @@ class GameLobbyControl:
         await role.delete()
         #Close control panel
         embed = discord.Embed(
-            title="Game Lobby Control Panel Closed", color=0x00ff00)
+            title="Voice Channel Control Panel Closed", color=0x00ff00)
         fields = {
             "Yielded": f"You have successfully yielded {self.lobby.name}"
             }
