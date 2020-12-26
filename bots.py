@@ -42,6 +42,7 @@ class UtilityBot(commands.Bot):
         self.name = name
         self.command_channels = command_channels
         self.censor = Censor()
+        self.spam_detection = SpamDetection()
         self.lobby_claims = {}
         self.execute_commands()
 
@@ -94,6 +95,8 @@ class UtilityBot(commands.Bot):
             return
         #Parse message for any blacklisted words
         await self.censor.parse(message)
+        #Check message and channel messaging history for instances of spam
+        await self.spam_detection.check(message)
         #Award Bounty Tickets
         if message.channel.category and\
            message.channel.category.name in ['General', 'Among Us']:
@@ -599,6 +602,43 @@ class UtilityBot(commands.Bot):
             await control.add_panel_reactions()
             await ctx.message.delete()
 
+class SpamDetection:
+    def __init__(self, *, filename='spam_parameters.txt'):
+        self.file = os.path.join('data', filename)
+        with open(self.file) as file:
+            self.parameters = json.load(file)
+        self.limit = self.parameters['Limit']
+        self.interval = self.parameters['Interval']
+
+    async def check(self, message):
+        spam = None
+        nmessages = 0
+        tinitial = message.created_at
+        content_initial = message.content
+        async for msg in message.channel.history(limit=50):
+            interval = (tinitial-msg.created_at).total_seconds()
+            if interval <= 0:
+                continue
+            if interval > self.interval:
+                spam = False
+                break
+            if msg.content in content_initial:
+                nmessages += 1
+            if nmessages > self.limit:
+                spam = True
+                break
+        if not spam:
+            return
+        embed = discord.Embed(
+            title=f"@{message.author.name} Has Been Marked for Spam", color=0xff0000)
+        fields = {
+            "Marked as Spam": f"{message.author.mention} messaged too quickly",
+            "Message Limit": self.limit, "Messages Sent": nmessages,
+            "Time Interval": self.interval}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        await message.channel.send(embed=embed)
+        
 class Censor:
     def __init__(self):
         self.file = os.path.join('data', 'blacklisted_words.txt')
