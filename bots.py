@@ -19,19 +19,23 @@ import string
 import discord
 from discord.ext import commands
 
-logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format=' %(asctime)s - %(levelname)s - %(message)s')
 
-class UtilityBot(commands.Bot):
+class Utils(commands.Bot):
     ''' 
 '''
-    def __init__(self, *, command_prefix, name, command_channels):
+    def __init__(self, *, command_prefix, name):
         '''
 '''
+        self.name = name
+        self.prefix = command_prefix
         #Manage intents to allow bot to view all members
         intents = discord.Intents.default()
         intents.members = True
         commands.Bot.__init__(
-            self, command_prefix=command_prefix, intents=intents,
+            self, command_prefix=self.prefix, intents=intents,
             self_bot=False)
         #Load regular expression and tier data
         with open(os.path.join('data', 'regular_expressions.csv')) as file:
@@ -39,22 +43,20 @@ class UtilityBot(commands.Bot):
         with open(os.path.join('data', 'tiers.csv')) as file:
             self.tiers = dict(list(csv.reader(file)))
             self.tiers = {int(k):v for k, v in self.tiers.items()}
-        self.name = name
-        self.command_channels = command_channels
-        self.censor = Censor()
-        self.spam_detection = SpamDetection()
-        self.lobby_claims = {}
+        #Call feature classes
+        self.add_cog(VoiceChannelControl(self, category="Game Lobbies"))
+        #Execute commands
         self.execute_commands()
 
     async def on_ready(self):
         ''' 
 '''
-        logging.info("Ready: %(self.name)s")
+        logging.info("Ready: %s", self.name)
 
     async def on_member_join(self, member):
         '''
 '''
-        logging.info("Member Join: %(member)s")
+        logging.info("Member Join: %s", member)
         if member.bot:
             return
         direct_message = await member.create_dm()
@@ -83,7 +85,7 @@ class UtilityBot(commands.Bot):
         await direct_message.send(embed=embed)
 
     async def on_message(self, message):
-        logging.info("Message: %(message)s")
+        logging.info("Message: %s", message)
         #Ignore all bot messages
         if message.author.bot:
             return
@@ -94,9 +96,9 @@ class UtilityBot(commands.Bot):
                 "Direct Message channels do not support commands")
             return
         #Parse message for any blacklisted words
-        await self.censor.parse(message)
+        #await self.censor.parse(message)
         #Check message and channel messaging history for instances of spam
-        await self.spam_detection.check(message)
+        #await self.spam_detection.check(message)
         #Award Bounty Tickets
         if message.channel.category and\
            message.channel.category.name in ['General', 'Among Us']:
@@ -112,12 +114,12 @@ class UtilityBot(commands.Bot):
                     await self.new_bounty(message)
         #Get the regular expression for the channel
         regex = re.compile(r'.*')
-        for channel in self.regexes:
-            if channel == message.channel.name and channel in self.regexes:
-                regex = re.compile(self.regexes[channel])
-                break
+        #for channel in self.regexes:
+        #    if channel == message.channel.name and channel in self.regexes:
+        #        regex = re.compile(self.regexes[channel])
+        #        break
         #Delete message if it does not fit the regular expressions
-        help_regex = re.compile(r'^\*help')
+        help_regex = re.compile(r'^\+help')
         results = regex.search(message.content)
         help_results = help_regex.search(message.content)
         if results is not None or help_results is not None:
@@ -127,32 +129,21 @@ class UtilityBot(commands.Bot):
             return
 
     async def on_message_delete(self, message):
-        logging.info("Message Delete: %(message)s")
+        logging.info("Message Delete: %s", message)
         #Check deleted message for ghost ping
         await self.ghost_ping(message)
 
     async def on_voice_state_update(self, member, before, after):
-        logging.info("Voice State Update: %((member, before, after))s")
+        logging.info("Voice State Update: %s", (member, before, after))
         #If the user disconnected, check if the user had a game lobby claim
         if before.channel and after.channel is None:
-            regex = re.compile(r"_Claimed: (Lobby [0-9])_")
-            for role in member.roles:
-                if regex.search(role.name):
-                    lobby = regex.search(role.name).group(1)
-                    await self.disconnect_with_claim(member, lobby)
+            await self.vc_control.disconnect_with_claim(member)
         #Mute new user if other members are muted when new user joins
         elif before.channel is None and after.channel:
-            claim_role = discord.utils.get(
-                self.get_guild(member.guild.id).roles,
-                name=f"_Claimed: {after.channel.name}_")
-            if claim_role is None:
-                return
-            for user in after.channel.members:
-                if user.voice.mute:
-                    await member.edit(mute=True)
-
+            await self.vc_control.manage_new_voice_channel_join(after.channel)
+    '''
     async def on_raw_reaction_add(self, payload):
-        logging.info("Raw Reaction Add: %(payload)s")
+        logging.info("Raw Reaction Add: %s", payload)
         #Ignore bot reactions
         if payload.member.bot:
             return
@@ -163,23 +154,7 @@ class UtilityBot(commands.Bot):
             if name in [u"\u2705"]:
                 await self.rule_agreement(payload)
         elif channel.name == 'bounties':
-            await self.bounty_entry(payload)
-        elif channel.name == 'utility-bots':
-            control = self.lobby_claims.get(payload.member.name)
-            if name in [
-                u"\u0030\ufe0f\u20e3", u"\u0031\ufe0f\u20e3",
-                u"\u0030\ufe2f\u20e3", u"\u0033\ufe0f\u20e3",
-                u"\u0030\ufe4f\u20e3"]:
-                await control.claim_lobby(payload)
-            elif name == u'\u274c':
-                await control.cancel_claim()
-                del self.lobby_claims[payload.member.name]
-            elif name.encode() in [
-                b'\xf0\x9f\x94\x87', b'\xf0\x9f\x94\x88']:
-                await control.voice_control(payload)
-            elif name.encode() == b'\xf0\x9f\x8f\xb3\xef\xb8\x8f':
-                await control.yield_control()
-                del self.lobby_claims[payload.member.name]
+            await self.bounty_entry(payload)'''
 
     async def rule_agreement(self, payload):
         '''
@@ -215,24 +190,6 @@ class UtilityBot(commands.Bot):
             text=f"Detected At: {datetime.datetime.now().strftime('%D %T')}")
         channel = discord.utils.get(message.guild.channels, name='dev-build')
         await channel.send(embed=embed)
-
-    async def disconnect_with_claim(self, member, lobby):
-        ''' Notifies user if they disconnected from their claimed game lobby
-            Requests that they use the :Report: reaction to yield their claim
-'''
-        #Create and send embed notifying user with claim
-        direct_message = await member.create_dm()
-        embed = discord.Embed(
-            title="Disconnected from Game Lobby with Claim", color=0x00ff00)
-        fields = {
-            "Details": '\n'.join([
-                f"You recently disconnected from {lobby}, which you claimed.",
-                "If you are still using this lobby, ignore this message.",
-                "Othersiwse, yield your claim using the control panel"]),
-            "Yield Claim": "React with :flag_white:"}
-        for field in fields:
-            embed.add_field(name=field, value=fields[field])
-        await direct_message.send(embed=embed)
 
     async def bounty_tickets(self, message):
         '''
@@ -578,30 +535,25 @@ class UtilityBot(commands.Bot):
                 embed.add_field(name=field, value=fields[field])
             await ctx.send(embed=embed)
 
-        @self.command(name="claim", pass_context=True)
-        async def claim(ctx):
-            ''' Claim control of a voice channel in Game Lobbies
-'''
-            #Ignore messages outside #utility-bots
-            if ctx.message.channel.name != self.command_channels['claim']:
-                return
-            #Verify that the member has not already claimed a game lobby
-            regex = re.compile(r"_Claimed: (Lobby [0-9])_")
-            for role in ctx.author.roles:
-                if regex.search(role.name) is None:
-                    continue
-                await ctx.send("You cannot claim multiple game lobbies")
-                return
-            control = GameLobbyControl(
-                ctx,
-                category="Game Lobbies",
-                channel=self.command_channels['claim']
-                )
-            self.lobby_claims.setdefault(ctx.author.name, control)
-            await control.send_panel()
-            await control.add_panel_reactions()
-            await ctx.message.delete()
+class Moderation:
+    def __init__(self, *, prefix, filename='command_restrictions.txt'):
+        self.prefix = prefix
+        self.file = os.path.join('data', filename)
+        with open(self.file) as file:
+            self.restrictions = json.load(file)
 
+    async def channel_restrictions(self, context):
+        command = context.message.content.split()[0].strip(self.prefix)
+        #Verify command is used in the correct channel and member has necessary roles
+        if context.channel.id not in self.restrictions[command]['channels']:
+            await context.message.delete()
+            return False
+        elif not any(
+            [r.id in self.restrictions[command]['roles'] for r in context.author.roles]):
+            await context.message.delete()
+            return False
+        return True
+        
 class SpamDetection:
     def __init__(self, *, filename='spam_parameters.txt'):
         self.file = os.path.join('data', filename)
@@ -638,18 +590,21 @@ class SpamDetection:
         for field in fields:
             embed.add_field(name=field, value=fields[field])
         await message.channel.send(embed=embed)
-        
+
 class Censor:
     def __init__(self):
         self.file = os.path.join('data', 'blacklisted_words.txt')
         with open(self.file) as file:
             self.blacklist = file.read().split('\n')
         self.separators = string.punctuation+string.digits+string.whitespace
+        self.excluded = string.ascii_letters
 
     async def parse(self, message):
         profane = False
         for word in self.blacklist:
-            regex = re.compile(fr'[{self.separators}]*'.join(list(word)))
+            formatted_word = f'[{self.separators}]*'.join(list(word))
+            regex = re.compile(
+                fr'[^{self.excluded}]+{formatted_word}[^{self.excluded}]+')
             if regex.search(message.content) is not None:
                 profane = True
                 break
@@ -666,131 +621,198 @@ class Censor:
         await asyncio.sleep(10)
         await notification.delete()
         
-class VoiceChannelControl:
-    def __init__(self, context, *, category, channel):
-        self.context = context
-        self.regex = re.compile(r"_Claimed: (Lobby [0-9])_")
-        self.guild = self.context.guild
-        self.category = discord.utils.get(
-            self.guild.categories, name=category)
-        self.lobbies = self.category.channels
-        self.member = self.context.author
-        self.channel = discord.utils.get(
-            self.guild.channels, name=channel)
+class VoiceChannelControl(commands.Cog):
+    def __init__(self, bot, *, category):
+        self.bot = bot
+        self.category = category
+        self.emojis = [
+            u'0\ufe0f\u20e3', u'1\ufe0f\u20e3', u'2\ufe0f\u20e3',
+            u'3\ufe0f\u20e3', u'4\ufe0f\u20e3', u'5\ufe0f\u20e3',
+            u'6\ufe0f\u20e3', u'7\ufe0f\u20e3', u'8\ufe0f\u20e3',
+            u'9\ufe0f\u20e3']
+        self.claims = {}
+        self.claim_requests = {}
 
-    async def send_panel(self):
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload):
+        logging.info("Raw Reaction Add: %s", payload)
+        if payload.member.bot:
+            return
+        if payload.emoji.name in self.emojis:
+            await self.claim_voice_channel(payload)
+        elif payload.emoji.name == u'\u274c':
+            await self.cancel_claim(payload)
+        elif payload.emoji.name in ["\U0001f507", "\U0001f508"]:
+            await self.voice_control(payload)
+        elif payload.emoji.name == "\U0001f3f3\ufe0f":
+            await self.yield_control(payload)
+
+    @commands.command(name="claim", pass_context=True)
+    async def claim(self, ctx):
+        ''' Claim voice control of one of the voice channels in a category
+'''
+        if ctx.author.id in self.claim_requests:
+            await ctx.send("You already have an active claim request")
+            return
+        if ctx.author.id in self.claims:
+            await ctx.send("You already have a voice channel claim")
+            return
+        await self.claim_request_panel(ctx)
+        await ctx.message.delete()
+        
+    async def claim_request_panel(self, ctx):
+        #Get voice channels in category
+        self.voice_channels = discord.utils.get(
+            ctx.guild.categories, name=self.category).channels
+        self.vc_options = {}
+        for num, channel in enumerate(self.voice_channels):
+            if num == 10:
+                break
+            if channel.id not in self.claims:
+                self.vc_options.setdefault(num, channel.name)
+        #Send claim request panel
         embed = discord.Embed(
-            title="Game Lobby Claim", color=0x00ff00)
+            title="Voice Channel Claim", color=0x00ff00)
         fields = {
+            "Channel Options": '\n'.join([
+                f"{self.emojis[k]} - {v}" for k, v in self.vc_options.items()]),
             "Claim": "Use the reactions below to claim a lobby",
-            "Cancel": "React with :x: to cancel"
-            }
+            "Cancel": "React with :x: to cancel"}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
-        embed.set_footer(text=self.member.name)
-        self.panel = await self.context.channel.send(embed=embed)
+        panel = await ctx.channel.send(embed=embed)
+        self.claim_requests.setdefault(ctx.message.author.id, panel.id)
+        #Add reactions to claim request panel
+        for emoji in self.emojis:
+            await panel.add_reaction(emoji)
+        await panel.add_reaction(u'\u274c')
 
-    async def add_panel_reactions(self):
-        for num, channel in enumerate(self.lobbies):
-            emoji = str(num).encode()+b'\xef\xb8\x8f\xe2\x83\xa3'
-            role = f"_Claimed: {channel}_"
-            if discord.utils.get(self.guild.roles, name=role) is None:
-                await self.panel.add_reaction(emoji.decode())
-        await self.panel.add_reaction(u'\u274c')
-
-    async def cancel_claim(self):
-        await self.panel.clear_reactions()
+    async def cancel_claim(self, payload):
+        #Get channel and message information from payload
+        msg_id = self.claim_requests.get(payload.member.id)
+        channel = discord.utils.get(
+            payload.member.guild.channels, id=payload.channel_id)
+        if msg_id is None:
+            await channel.send(
+                "You do not have an active voice channel claim")
+            return
+        panel = await channel.fetch_message(msg_id)
+        #Deprecate voice channel claim panel
+        await panel.clear_reactions()
         embed = discord.Embed(
             title="Voice Channel Claim Canceled", color=0x00ff00)
-        await self.panel.edit(embed=embed)
+        await panel.edit(embed=embed)
         await asyncio.sleep(10)
-        await self.panel.delete()
+        await panel.delete()
+        del self.claim_requests[payload.member.id]
 
-    async def claim_lobby(self, payload):
-        #Grant member game lobby claim based on the emoji used
-        num = payload.emoji.name[0]
-        self.lobby = discord.utils.get(
-            self.lobbies, name=f"Lobby {num}")
-        await self.guild.create_role(name=f"_Claimed: {self.lobby.name}_")
-        role = discord.utils.get(
-            self.guild.roles, name=f"_Claimed: {self.lobby.name}_")
-        await self.member.add_roles(role)
-        #Edit panel for game lobby member voice control
-        await self.panel.clear_reactions()
+    async def claim_voice_channel(self, payload):
+        #Get voice channel and message from payload
+        num = int(payload.emoji.name[0])
+        voice_channel = discord.utils.get(
+            self.voice_channels, name=self.vc_options[num])
+        channel = self.bot.get_channel(payload.channel_id)
+        panel = await channel.fetch_message(
+            self.claim_requests.get(payload.member.id))
+        self.claims.setdefault(payload.member.id, voice_channel.id)
+        #Edit panel for voice channel control
         embed = discord.Embed(
             title="Voice Channel Control Panel", color=0x00ff00)
         fields = {
-            "Claimed": f"You have successfully claimed Lobby {num}",
-            "Voice Control": '\n'.join([
-                f"You can control the voices of the members of Lobby {num}",
-                "Mute with :mute:",
-                "Unmute with :speaker:"
-                ]),
-            "Yield": '\n'.join([
-                "Yield your claim on the game lobby when you are finished",
-                "Yield with :flag_white:"
-                ])}
+            "Claimed": f"You have successfully claimed {voice_channel.name}",
+            "Voice Channel Control": '\n'.join([
+                "Mute all - :mute:", "Unmute all - :speaker:",
+                "Yield - :flag_white:"])}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
-        await self.panel.edit(embed=embed)
-        #Add reactions to allow member to control member voices
-        reactions = [
-            b'\xf0\x9f\x94\x87',
-            b'\xf0\x9f\x94\x88',
-            b'\xf0\x9f\x8f\xb3\xef\xb8\x8f'
-            ]
+        await panel.edit(embed=embed)
+        #Add voice control reactions
+        await panel.clear_reactions()
+        reactions = ["\U0001f507", "\U0001f508", "\U0001f3f3\ufe0f"]
         for reaction in reactions:
-            await self.panel.add_reaction(reaction.decode())
+            await panel.add_reaction(reaction)
 
     async def voice_control(self, payload):
+        channel = self.bot.get_channel(payload.channel_id)
+        panel = await channel.fetch_message(
+            self.claim_requests.get(payload.member.id))
         #Manage the voices of the members based on the emoji used
-        controls = {
-            b'\xf0\x9f\x94\x87': True,
-            b'\xf0\x9f\x94\x88': False
-            }
-        if not self.lobby.members:
-            await self.channel.send(
-                f"There are no members in {self.lobby.name}")
+        controls = {"\U0001f507": True, "\U0001f508": False}
+        voice_channel = self.bot.get_channel(
+            self.claims.get(payload.member.id))
+        if not voice_channel.members:
+            await channel.send(
+                f"There are no members in {voice_channel.name}")
         else:
-            for member in self.lobby.members:
-                await member.edit(mute=controls[payload.emoji.name.encode()])
-        await self.panel.remove_reaction(payload.emoji, self.member)
+            for member in voice_channel.members:
+                await member.edit(mute=controls[payload.emoji.name])
+        await panel.remove_reaction(payload.emoji, payload.member)
 
-    async def yield_control(self):
-        #Delete the claim role that was granted to the member
-        role = discord.utils.get(
-            self.guild.roles, name=f"_Claimed: {self.lobby.name}_")
-        await role.delete()
+    async def yield_control(self, payload):
+        channel = self.bot.get_channel(payload.channel_id)
+        panel = await channel.fetch_message(
+            self.claim_requests.get(payload.member.id))
         #Close control panel
+        voice_channel = self.bot.get_channel(
+            self.claims.get(payload.member.id))
         embed = discord.Embed(
             title="Voice Channel Control Panel Closed", color=0x00ff00)
         fields = {
-            "Yielded": f"You have successfully yielded {self.lobby.name}"
+            "Yielded": f"You have successfully yielded {voice_channel.name}"
             }
         for field in fields:
             embed.add_field(name=field, value=fields[field])
-        await self.panel.edit(embed=embed)
-        await self.panel.clear_reactions()
+        await panel.edit(embed=embed)
+        await panel.clear_reactions()
         await asyncio.sleep(10)
-        await self.panel.delete()
+        await panel.delete()
+        del self.claim_requests[payload.member.id]
+        del self.claims[payload.member.id]
+
+    async def disconnect_with_claim(self, member):
+        #Parse member roles to check if member has a claim on a voice channel
+        lobby = None
+        for role in member.roles:
+            if self.regex.search(role.name) is not None:
+                lobby = role_regex.search(role.name).group(1)
+                break
+        if lobby is None:
+            return
+        #Notify member that they still have a claim and request that they yield it
+        direct_message = await member.create_dm()
+        embed = discord.Embed(
+            title="Disconnected from Voice Channel with Claim", color=0x00ff00)
+        fields = {
+            "Details": '\n'.join([
+                f"You recently disconnected from your claimed voice channel, {lobby}",
+                "Ignore this message if you are still using this voice channel.",
+                "Otherwise, please yield the claim using the control panel"]),
+            "Yield Claim": "React with :flag_white:"}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        await direct_message.send(embed=embed)
+
+    async def manage_new_voice_channel_join(self, new_member, channel):
+        #Parse guild roles to check if the voice channel is claimed
+        role = discord.utils.get(
+            channel.guild.roles, name=f"_Claimed: {channel.name}_")
+        if role is None:
+            return
+        #Edit new member voice according to the voice status of the member with the claim
+        for member in channel.members:
+            if role in member.roles:
+                await new_member.edit(mute=member.voice.mute)
 
 def main():
-    ''' Create and run UtilityBot instances
-'''
-    tokens = {
-        "Utils": os.environ.get("UTILS", None)}
-    if None in tokens.values():
-        with open(os.path.join('data', 'tokens.csv')) as file:
-            tokens = dict(list(csv.reader(file, delimiter='\t')))
-    with open(os.path.join('data', 'command_channels.txt')) as file:
-        command_channels = json.load(file)
+    token = os.environ.get("token", None)
+    if token is None:
+        with open(os.path.join('data', 'token.txt')) as file:
+            token = file.read()
+    assert token is not None
     loop = asyncio.get_event_loop()
-    for bot in tokens:
-        discord_bot = UtilityBot(
-            command_prefix="*",
-            name=bot,
-            command_channels=command_channels)
-        loop.create_task(discord_bot.start(tokens[bot]))
+    discord_bot = Utils(
+        command_prefix="+", name="Utils")
+    loop.create_task(discord_bot.start(token))
     loop.run_forever()
 
 if __name__ == '__main__':
