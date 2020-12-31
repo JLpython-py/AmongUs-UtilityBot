@@ -26,11 +26,11 @@ logging.basicConfig(
 class Utils(commands.Bot):
     ''' 
 '''
-    def __init__(self, *, command_prefix, name):
+    def __init__(self, *, prefix, name):
         '''
 '''
         self.name = name
-        self.prefix = command_prefix
+        self.prefix = prefix
         #Manage intents to allow bot to view all members
         intents = discord.Intents.default()
         intents.members = True
@@ -43,10 +43,14 @@ class Utils(commands.Bot):
         with open(os.path.join('data', 'tiers.csv')) as file:
             self.tiers = dict(list(csv.reader(file)))
             self.tiers = {int(k):v for k, v in self.tiers.items()}
+        with open(os.path.join('data', 'allowed_pings.txt')) as file:
+            self.allowed_pings = json.load(file)
         #Call feature classes
-        self.add_cog(VoiceChannelControl(self, category="Game Lobbies"))
+        #self.add_cog(VoiceChannelControl(self, category="Game Lobbies"))
         self.add_cog(Censor(self))
         self.add_cog(SpamDetection(self))
+        #self.add_cog(GhostPing(self, allowed_pings=self.allowed_pings))
+        self.add_cog(Moderation(self))
         #Execute commands
         self.execute_commands()
 
@@ -91,41 +95,7 @@ class Utils(commands.Bot):
         #Ignore all bot messages
         if message.author.bot:
             return
-        #Check message and channel messaging history for instances of spam
-        #await self.spam_detection.check(message)
-        #Award Bounty Tickets
-        if message.channel.category and\
-           message.channel.category.name in ['General', 'Among Us']:
-            guild = message.guild
-            rand_channel = random.choice(
-                discord.utils.get(
-                    guild.categories, name=message.channel.category.name
-                    ).channels)
-            rand_member = random.choice(guild.members)
-            if rand_channel.name == message.channel.name:
-                await self.bounty_tickets(message)
-                if rand_member.name == message.author.name:
-                    await self.new_bounty(message)
-        #Get the regular expression for the channel
-        regex = re.compile(r'.*')
-        #for channel in self.regexes:
-        #    if channel == message.channel.name and channel in self.regexes:
-        #        regex = re.compile(self.regexes[channel])
-        #        break
-        #Delete message if it does not fit the regular expressions
-        help_regex = re.compile(r'^\+help')
-        results = regex.search(message.content)
-        help_results = help_regex.search(message.content)
-        if results is not None or help_results is not None:
-            await self.process_commands(message)
-        else:
-            await message.delete()
-            return
-
-    async def on_message_delete(self, message):
-        logging.info("Message Delete: %s", message)
-        #Check deleted message for ghost ping
-        await self.ghost_ping(message)
+        await self.process_commands(message)
 
     async def on_voice_state_update(self, member, before, after):
         logging.info("Voice State Update: %s", (member, before, after))
@@ -135,7 +105,7 @@ class Utils(commands.Bot):
         #Mute new user if other members are muted when new user joins
         elif before.channel is None and after.channel:
             await self.vc_control.manage_new_voice_channel_join(after.channel)
-    '''
+
     async def on_raw_reaction_add(self, payload):
         logging.info("Raw Reaction Add: %s", payload)
         #Ignore bot reactions
@@ -148,7 +118,7 @@ class Utils(commands.Bot):
             if name in [u"\u2705"]:
                 await self.rule_agreement(payload)
         elif channel.name == 'bounties':
-            await self.bounty_entry(payload)'''
+            await self.bounty_entry(payload)
 
     async def rule_agreement(self, payload):
         '''
@@ -166,24 +136,6 @@ class Utils(commands.Bot):
         for field in fields:
             embed.add_field(name=field, value=fields[field])
         await direct_message.send(embed=embed)
-
-    async def ghost_ping(self, message):
-        ''' Flag message if a role was mentioned in a deleted message
-'''
-        if not message.raw_role_mentions:
-            return
-        roles = [discord.utils.get(message.guild.roles, id=i).name\
-                 for i in message.raw_role_mentions]
-        fields = {
-            "User": message.author.name, "Channel": message.channel.name,
-            "Message": message.content, "Role Mentions": ', '.join(roles)}
-        embed = discord.Embed(title="Ghost Ping Detected", color=0xff0000)
-        for field in fields:
-            embed.add_field(name=field, value=fields[field])
-        embed.set_footer(
-            text=f"Detected At: {datetime.datetime.now().strftime('%D %T')}")
-        channel = discord.utils.get(message.guild.channels, name='dev-build')
-        await channel.send(embed=embed)
 
     async def bounty_tickets(self, message):
         '''
@@ -488,24 +440,68 @@ class Utils(commands.Bot):
                 embed.add_field(name=field, value=fields[field])
             await ctx.send(embed=embed)
 
-class Moderation:
-    def __init__(self, *, prefix, filename='command_restrictions.txt'):
-        self.prefix = prefix
+class GhostPing(commands.Cog):
+    def __init__(self, bot, *, allowed_pings):
+        self.bot = bot
+        self.allowed_pings = allowed_pings
+
+    @commands.Cog.listener()
+    async def on_message_delete(self, message):
+        logging.info(message)
+        await self.parse(message)
+
+    async def parse(self, message):
+        logging.info((message.raw_role_mentions, self.allow_role_pings))
+        logging.info((message.raw_mentions, self.allow_member_pings))
+        if not (message.raw_role_mentions and not self.allow_role_pings)\
+           or (message.raw_mentions and not self.allow_member_pings):
+            return
+        roles, members = [], []
+        if not self.allow_role_pings:
+            roles = [discord.utils.get(message.guild.roles, id=i).name\
+                     for i in message.raw_role_mentions]
+        if not self.allow_member_pings:
+            members = [discord.utils.get(message.guild.members, id=i).name\
+                       for i in message.raw_mentions]
+        fields = {
+            "User": message.author.name, "Channel": message.channel.name,
+            "Message": message.content, "Mentions Everyone": "False"}
+        if roles:
+            fields["Role Mentions"] = ', '.join(roles)
+        if members:
+            fields["Member Mentions"] = ', '.join(members)
+        if message.mention_everyone:
+            fields["Mentions Everyone"] = "True"
+        embed = discord.Embed(title="Ghost Ping Detected", color=0xff0000)
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        embed.set_footer(
+            text=f"Detected At: {datetime.datetime.now().strftime('%D %T')}")
+        await message.channel.send(embed=embed)
+
+class Moderation(commands.Cog):
+    def __init__(self, bot, *, filename='command_restrictions.txt'):
+        self.bot = bot
         self.file = os.path.join('data', filename)
         with open(self.file) as file:
             self.restrictions = json.load(file)
 
-    async def channel_restrictions(self, context):
-        command = context.message.content.split()[0].strip(self.prefix)
-        #Verify command is used in the correct channel and member has necessary roles
-        if context.channel.id not in self.restrictions[command]['channels']:
-            await context.message.delete()
-            return False
-        elif not any(
-            [r.id in self.restrictions[command]['roles'] for r in context.author.roles]):
-            await context.message.delete()
-            return False
-        return True
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        await self.command_restrictions(message)
+
+    async def command_restrictions(self, message):
+        command = message.content.split()[0].strip(self.bot.prefix)
+        allowed_commands = self.restrictions[command]['channels']
+        if allowed_commands\
+           and message.channel.id not in allowed_commands:
+            await message.delete()
+            return
+        allowed_roles = self.restrictions[command]['roles']
+        if allowed_roles\
+           and not any([r.id in allowed_roles for r in message.author.roles]):
+            await message.delete()
+            return
         
 class SpamDetection(commands.Cog):
     def __init__(self, bot, *, filename='spam_parameters.txt'):
@@ -778,7 +774,7 @@ def main():
     assert token is not None
     loop = asyncio.get_event_loop()
     discord_bot = Utils(
-        command_prefix="*", name="Utils")
+        prefix="*", name="Util5")
     loop.create_task(discord_bot.start(token))
     loop.run_forever()
 
