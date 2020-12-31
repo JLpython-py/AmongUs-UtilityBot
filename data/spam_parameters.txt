@@ -1,1 +1,1 @@
-{"Limit": 10, "Interval": 5}
+{"Limit": 10, "Interval": 10}

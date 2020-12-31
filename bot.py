@@ -46,6 +46,7 @@ class Utils(commands.Bot):
         #Call feature classes
         self.add_cog(VoiceChannelControl(self, category="Game Lobbies"))
         self.add_cog(Censor(self))
+        self.add_cog(SpamDetection(self))
         #Execute commands
         self.execute_commands()
 
@@ -409,47 +410,6 @@ class Utils(commands.Bot):
     def execute_commands(self):
         ''' Bot commands which can be used by users with the 'Member' role
 '''
-        @self.command(name="suggestion", pass_context=True)
-        async def suggestion(ctx):
-            ''' Suggest a feature for the guild or for the bots
-                Return values:
-                - :Victory: and :Defeat: reactions for members to vote with
-'''
-            #Ignore command if outside #bugs-and-suggestions
-            if ctx.message.channel.name != 'bugs-and-suggestions':
-                return
-            #React to the message with emojis to allow members to vote
-            reactions = ["<:Victory:779396489792847892>",
-                         "<:Defeat:779396491667963904>"]
-            for emoji in reactions:
-                await ctx.message.add_reaction(emoji)
-
-        @self.command(name="bug", pass_context=True)
-        async def bug(ctx):
-            ''' Report a bug in the bots
-                Return values:
-                - :Report: reaction for members to report the bug
-'''
-            #Ignore command if outside #bugs-and-suggestions
-            if ctx.message.channel.name != 'bugs-and-suggestions':
-                return
-            #React to message with emojis to allow members to report
-            reactions = ["<:Report:777211184881467462"]
-            for emoji in reactions:
-                await ctx.message.add_reaction(emoji)
-
-        @self.command(name="comment", pass_context=True)
-        async def comment(ctx):
-            ''' Comment on a bug or suggestion of another use
-'''
-            if ctx.channel.name != 'bugs-and-suggestions':
-                return
-            #Verify that the user has the 'Moderator' role
-            if "Moderator" not in [r.name for r in ctx.author.roles]:
-                await ctx.message.delete()
-                await ctx.send("You are not authorized to use this command")
-                return
-
         @self.command(name="give_points", pass_context=True)
         async def give_points(ctx, plus):
             ''' Give guild points to a user
@@ -547,13 +507,18 @@ class Moderation:
             return False
         return True
         
-class SpamDetection:
-    def __init__(self, *, filename='spam_parameters.txt'):
+class SpamDetection(commands.Cog):
+    def __init__(self, bot, *, filename='spam_parameters.txt'):
+        self.bot = bot
         self.file = os.path.join('data', filename)
         with open(self.file) as file:
             self.parameters = json.load(file)
         self.limit = self.parameters['Limit']
         self.interval = self.parameters['Interval']
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        await self.check(message)
 
     async def check(self, message):
         spam = None
@@ -578,8 +543,7 @@ class SpamDetection:
             title=f"@{message.author.name} Has Been Marked for Spam", color=0xff0000)
         fields = {
             "Marked as Spam": f"{message.author.mention} messaged too quickly",
-            "Message Limit": self.limit, "Messages Sent": nmessages,
-            "Time Interval": self.interval}
+            "Message Limit": self.limit, "Time Interval": self.interval}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
         await message.channel.send(embed=embed)
