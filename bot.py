@@ -45,6 +45,7 @@ class Utils(commands.Bot):
             self.tiers = {int(k):v for k, v in self.tiers.items()}
         #Call feature classes
         self.add_cog(VoiceChannelControl(self, category="Game Lobbies"))
+        self.add_cog(Censor(self))
         #Execute commands
         self.execute_commands()
 
@@ -89,14 +90,6 @@ class Utils(commands.Bot):
         #Ignore all bot messages
         if message.author.bot:
             return
-        #Reject any commands in direct message channels
-        if message.content.startswith('*')\
-           and "Direct Message" in str(message.channel):
-            await message.channel.send(
-                "Direct Message channels do not support commands")
-            return
-        #Parse message for any blacklisted words
-        #await self.censor.parse(message)
         #Check message and channel messaging history for instances of spam
         #await self.spam_detection.check(message)
         #Award Bounty Tickets
@@ -591,21 +584,31 @@ class SpamDetection:
             embed.add_field(name=field, value=fields[field])
         await message.channel.send(embed=embed)
 
-class Censor:
-    def __init__(self):
-        self.file = os.path.join('data', 'blacklisted_words.txt')
+class Censor(commands.Cog):
+    def __init__(self, bot, *, file='blacklisted_words.txt'):
+        self.bot = bot
+        self.file = os.path.join('data', file)
         with open(self.file) as file:
             self.blacklist = file.read().split('\n')
         self.separators = string.punctuation+string.digits+string.whitespace
         self.excluded = string.ascii_letters
 
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        await self.parse(message)
+
     async def parse(self, message):
         profane = False
         for word in self.blacklist:
             formatted_word = f'[{self.separators}]*'.join(list(word))
-            regex = re.compile(
-                fr'[^{self.excluded}]+{formatted_word}[^{self.excluded}]+')
-            if regex.search(message.content) is not None:
+            regex_true = re.compile(
+                fr"{formatted_word}",
+                re.IGNORECASE)
+            regex_false = re.compile(
+                fr"([{self.excluded}]+{word})|({word}[{self.excluded}]+)",
+                re.IGNORECASE)
+            if regex_true.search(message.content) is not None\
+               and regex_false.search(message.content) is None:
                 profane = True
                 break
         if not profane:
@@ -811,7 +814,7 @@ def main():
     assert token is not None
     loop = asyncio.get_event_loop()
     discord_bot = Utils(
-        command_prefix="+", name="Utils")
+        command_prefix="*", name="Utils")
     loop.create_task(discord_bot.start(token))
     loop.run_forever()
 
