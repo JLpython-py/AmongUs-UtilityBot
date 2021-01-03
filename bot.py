@@ -96,15 +96,6 @@ class Utils(commands.Bot):
             return
         await self.process_commands(message)
 
-    async def on_voice_state_update(self, member, before, after):
-        logging.info("Voice State Update: %s", (member, before, after))
-        #If the user disconnected, check if the user had a game lobby claim
-        if before.channel and after.channel is None:
-            await self.vc_control.disconnect_with_claim(member)
-        #Mute new user if other members are muted when new user joins
-        elif before.channel is None and after.channel:
-            await self.vc_control.manage_new_voice_channel_join(after.channel)
-
     async def on_raw_reaction_add(self, payload):
         logging.info("Raw Reaction Add: %s", payload)
         #Ignore bot reactions
@@ -584,6 +575,7 @@ class VoiceChannelControl(commands.Cog):
             u'9\ufe0f\u20e3']
         self.claims = {}
         self.claim_requests = {}
+        self.voice_channels = {}
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
@@ -596,7 +588,7 @@ class VoiceChannelControl(commands.Cog):
             await self.cancel_claim(payload)
         elif payload.emoji.name in ["\U0001f507", "\U0001f508"]:
             await self.voice_control(payload)
-        elif payload.emoji.name == "\U0001f3f3\ufe0f":
+        elif payload.emoji.name == "\U0001f3f3":
             await self.yield_control(payload)
 
     @commands.command(name="claim", pass_context=True)
@@ -616,18 +608,13 @@ class VoiceChannelControl(commands.Cog):
         #Get voice channels in category
         self.voice_channels = discord.utils.get(
             ctx.guild.categories, name=self.category).channels
-        self.vc_options = {}
-        for num, channel in enumerate(self.voice_channels):
-            if num == 10:
-                break
-            if channel.id not in self.claims:
-                self.vc_options.setdefault(num, channel.name)
         #Send claim request panel
         embed = discord.Embed(
             title="Voice Channel Claim", color=0x00ff00)
         fields = {
             "Channel Options": '\n'.join([
-                f"{self.emojis[k]} - {v}" for k, v in self.vc_options.items()]),
+                f"{self.emojis[self.voice_channels.index(c)]} - {c}"\
+                for c in self.voice_channels]),
             "Claim": "Use the reactions below to claim a lobby",
             "Cancel": "React with :x: to cancel"}
         for field in fields:
@@ -635,8 +622,9 @@ class VoiceChannelControl(commands.Cog):
         panel = await ctx.channel.send(embed=embed)
         self.claim_requests.setdefault(ctx.message.author.id, panel.id)
         #Add reactions to claim request panel
-        for emoji in self.emojis:
-            await panel.add_reaction(emoji)
+        for channel in self.voice_channels:
+            await panel.add_reaction(
+                self.emojis[self.voice_channels.index(channel)])
         await panel.add_reaction(u'\u274c')
 
     async def cancel_claim(self, payload):
@@ -654,15 +642,17 @@ class VoiceChannelControl(commands.Cog):
         embed = discord.Embed(
             title="Voice Channel Claim Canceled", color=0x00ff00)
         await panel.edit(embed=embed)
+        del self.claim_requests[payload.member.id]
         await asyncio.sleep(10)
         await panel.delete()
-        del self.claim_requests[payload.member.id]
 
     async def claim_voice_channel(self, payload):
         #Get voice channel and message from payload
-        num = int(payload.emoji.name[0])
         voice_channel = discord.utils.get(
-            self.voice_channels, name=self.vc_options[num])
+            self.voice_channels,
+            name=self.voice_channels[
+                self.emojis.index(payload.emoji.name)
+                ].name)
         channel = self.bot.get_channel(payload.channel_id)
         panel = await channel.fetch_message(
             self.claim_requests.get(payload.member.id))
@@ -680,7 +670,7 @@ class VoiceChannelControl(commands.Cog):
         await panel.edit(embed=embed)
         #Add voice control reactions
         await panel.clear_reactions()
-        reactions = ["\U0001f507", "\U0001f508", "\U0001f3f3\ufe0f"]
+        reactions = ["\U0001f507", "\U0001f508", "\U0001f3f3"]
         for reaction in reactions:
             await panel.add_reaction(reaction)
 
@@ -693,8 +683,10 @@ class VoiceChannelControl(commands.Cog):
         voice_channel = self.bot.get_channel(
             self.claims.get(payload.member.id))
         if not voice_channel.members:
-            await channel.send(
+            message = await channel.send(
                 f"There are no members in {voice_channel.name}")
+            await asyncio.sleep(5)
+            await message.delete()
         else:
             for member in voice_channel.members:
                 await member.edit(mute=controls[payload.emoji.name])
@@ -716,27 +708,22 @@ class VoiceChannelControl(commands.Cog):
             embed.add_field(name=field, value=fields[field])
         await panel.edit(embed=embed)
         await panel.clear_reactions()
-        await asyncio.sleep(10)
-        await panel.delete()
         del self.claim_requests[payload.member.id]
         del self.claims[payload.member.id]
+        await asyncio.sleep(10)
+        await panel.delete()
 
     async def disconnect_with_claim(self, member):
-        #Parse member roles to check if member has a claim on a voice channel
-        lobby = None
-        for role in member.roles:
-            if self.regex.search(role.name) is not None:
-                lobby = role_regex.search(role.name).group(1)
-                break
-        if lobby is None:
+        if member.id not in self.claims:
             return
+        voice_channel = self.claims.get(member.id)
         #Notify member that they still have a claim and request that they yield it
         direct_message = await member.create_dm()
         embed = discord.Embed(
             title="Disconnected from Voice Channel with Claim", color=0x00ff00)
         fields = {
             "Details": '\n'.join([
-                f"You recently disconnected from your claimed voice channel, {lobby}",
+                f"Disconnected from claimed voice channel, {voice_channel.name}",
                 "Ignore this message if you are still using this voice channel.",
                 "Otherwise, please yield the claim using the control panel"]),
             "Yield Claim": "React with :flag_white:"}
@@ -750,9 +737,9 @@ class VoiceChannelControl(commands.Cog):
             channel.guild.roles, name=f"_Claimed: {channel.name}_")
         if role is None:
             return
-        #Edit new member voice according to the voice status of the member with the claim
+        #Edit new member voice
         for member in channel.members:
-            if role in member.roles:
+            if member.id in self.claim_requests:
                 await new_member.edit(mute=member.voice.mute)
 
 def main():

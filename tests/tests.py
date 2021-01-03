@@ -78,15 +78,15 @@ class TestCensor(unittest.TestCase):
         for case in test_cases:
             self.assertTrue(regex.search(case))
 
-class TestVoiceChannelControl(unittest.TestCase):
+class TestVoiceChannelControlCog(unittest.TestCase):
 
-    def test_retrieve_number_by_emoji(self):
-        reactions = {}
-        for num in range(10):
-            emoji = str(num).encode()+b'\xef\xb8\x8f\xe2\x83\xa3'
-            reactions.setdefault(emoji, num)
-        for emoji in reactions:
-            self.assertEqual(int(emoji.decode()[0]), reactions[emoji])
+    def test_reaction_unicodes(self):
+        self.assertEqual(u'\u274c', '❌')
+        self.assertEqual("\U0001f507", '🔇')
+        self.assertEqual("\U0001f508", '🔈')
+        self.assertEqual("\U0001f3f3", '🏳')
+
+        
 
 if __name__ == '__main__':
     unittest.main()
