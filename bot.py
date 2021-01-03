@@ -38,19 +38,18 @@ class Utils(commands.Bot):
             self, command_prefix=self.prefix, intents=intents,
             self_bot=False)
         #Load regular expression and tier data
-        with open(os.path.join('data', 'regular_expressions.csv')) as file:
-            self.regexes = dict(list(csv.reader(file)))
         with open(os.path.join('data', 'tiers.csv')) as file:
             self.tiers = dict(list(csv.reader(file)))
             self.tiers = {int(k):v for k, v in self.tiers.items()}
         with open(os.path.join('data', 'allowed_pings.txt')) as file:
             self.allowed_pings = json.load(file)
+        allowed_moderations = {
+            "command_restrictions": False, "spam_detection": True,
+            "censor": True}
         #Call feature classes
-        #self.add_cog(VoiceChannelControl(self, category="Game Lobbies"))
-        self.add_cog(Censor(self))
-        self.add_cog(SpamDetection(self))
+        self.add_cog(VoiceChannelControl(self, category="Game Lobbies"))
+        #self.add_cog(Moderation(self, *allowed_moderations))
         #self.add_cog(GhostPing(self, allowed_pings=self.allowed_pings))
-        self.add_cog(Moderation(self))
         #Execute commands
         self.execute_commands()
 
@@ -480,15 +479,25 @@ class GhostPing(commands.Cog):
         await message.channel.send(embed=embed)
 
 class Moderation(commands.Cog):
-    def __init__(self, bot, *, filename='command_restrictions.txt'):
+    def __init__(self, bot, *,
+                 command_restrictions=False, spam_detection=False,
+                 censor=False):
         self.bot = bot
-        self.file = os.path.join('data', filename)
-        with open(self.file) as file:
-            self.restrictions = json.load(file)
+        self.allowed_features = {
+            "Command Restrictions": command_restrictions,
+            "Spam Detection": spam_detection,
+            "Censor": censor}
+        self.features = {
+            "Command Restrictions": self.command_restrictions,
+            "Spam Detection": self.spam_detection,
+            "Censor": self.censor}
 
-    @commands.Cog.listener()
-    async def on_message(self, message):
-        await self.command_restrictions(message)
+    async def check_all(self, message):
+        for feat in self.features:
+            if self.allowed_features[feat]:
+                flagged = await self.features[feat](message)
+                if flagged:
+                    break
 
     async def command_restrictions(self, message):
         command = message.content.split()[0].strip(self.bot.prefix)
@@ -502,62 +511,42 @@ class Moderation(commands.Cog):
            and not any([r.id in allowed_roles for r in message.author.roles]):
             await message.delete()
             return
-        
-class SpamDetection(commands.Cog):
-    def __init__(self, bot, *, filename='spam_parameters.txt'):
-        self.bot = bot
-        self.file = os.path.join('data', filename)
-        with open(self.file) as file:
-            self.parameters = json.load(file)
-        self.limit = self.parameters['Limit']
-        self.interval = self.parameters['Interval']
 
-    @commands.Cog.listener()
-    async def on_message(self, message):
-        await self.check(message)
-
-    async def check(self, message):
-        spam = None
-        nmessages = 0
+    async def spam_detection(self, message, filename="spam_parameters.txt"):
+        with open(os.path.join('data', filename)) as file:
+            parameters = json.load(file)
+        limit, max_interval = parameters['Limit'], parameters['Interval']
+        spam, tracked_message = None, [message]
         tinitial = message.created_at
-        content_initial = message.content
         async for msg in message.channel.history(limit=50):
             interval = (tinitial-msg.created_at).total_seconds()
             if interval <= 0:
                 continue
-            if interval > self.interval:
+            if interval > max_interval:
                 spam = False
                 break
-            if msg.content in content_initial:
-                nmessages += 1
-            if nmessages > self.limit:
+            if len(tracked_messages) >= self.limit:
                 spam = True
-                break
+            tracked_messages.append(msg)
         if not spam:
-            return
+            return False
+        await message.channel.delete_messages(tracked_messages)
         embed = discord.Embed(
-            title=f"@{message.author.name} Has Been Marked for Spam", color=0xff0000)
+            title=f"@{message.author.name} Has Been Marked for Spam",
+            color=0xff0000)
         fields = {
             "Marked as Spam": f"{message.author.mention} messaged too quickly",
-            "Message Limit": self.limit, "Time Interval": self.interval}
+            "Message Limit": self.limit, "Maximum Time Interval": self.interval}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
         await message.channel.send(embed=embed)
+        return True
 
-class Censor(commands.Cog):
-    def __init__(self, bot, *, file='blacklisted_words.txt'):
-        self.bot = bot
-        self.file = os.path.join('data', file)
-        with open(self.file) as file:
-            self.blacklist = file.read().split('\n')
-        self.separators = string.punctuation+string.digits+string.whitespace
-        self.excluded = string.ascii_letters
-
-    @commands.Cog.listener()
-    async def on_message(self, message):
-        await self.parse(message)
-
-    async def parse(self, message):
+    async def censor(self, message, filename="blacklisted_words.txt"):
+        with open(os.path.join('data', filename)) as file:
+            blacklist = file.read().split('\n')
+        separators = string.punctuation+string.digits+string.whitespace
+        excluded = string.ascii_letters
         profane = False
         for word in self.blacklist:
             formatted_word = f'[{self.separators}]*'.join(list(word))

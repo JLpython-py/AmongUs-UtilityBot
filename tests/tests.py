@@ -1,13 +1,51 @@
 #! python3
 # tests.py
 
-import discord
-
+import csv
 import json
 import os
 import re
 import string
 import unittest
+
+import discord
+
+class TestMain(unittest.TestCase):
+
+    def test_token(self):
+        environment_token = os.environ.get("UTILS", None)
+        with open(os.path.join('data', 'tokens.csv')) as file:
+            tokens = dict(list(csv.reader(file, delimiter='\t')))
+            file_token = tokens.get("UTILS", None)
+        self.assertTrue(environment_token or file_token)
+
+class TestModeration(unittest.TestCase):
+
+    def open_command_restrictions(self):
+        path = os.path.join('data', 'command_restrictions.txt')
+        with open(path) as file:
+            restrictions = json.load(file)
+        return restrictions
+
+    def test_open_command_restrictions_file(self):
+        restrictions = self.open_command_restrictions()
+        for command in restrictions:
+            self.assertIn('channels', restrictions[command])
+            self.assertIn('roles', restrictions[command])
+            for category in restrictions[command]:
+                self.assertTrue(isinstance(restrictions[command][category], list))
+                for item in restrictions[command][category]:
+                    self.assertTrue(isinstance(item, int))
+
+    def test_command_regular_expression(self):
+        messages = [
+            "*suggestion Suggestion goes here", "*bug Bug goes here",
+            "*comment Comment goes here", "*give_points 10", "*get_points", "*get_tickets",
+            "*claim"]
+        regex = re.compile(fr"^\*(.*)")
+        for msg in messages:
+            command = regex.search(msg)
+            self.assertTrue(command is not None)
 
 class TestSpamDetection(unittest.TestCase):
 
@@ -40,15 +78,9 @@ class TestCensor(unittest.TestCase):
         for case in test_cases:
             self.assertTrue(regex.search(case))
 
-class TestGameLobbyControl(unittest.TestCase):
+class TestVoiceChannelControl(unittest.TestCase):
 
-    def test_regular_expression(self):
-        regex = re.compile(r"_Claimed: (Lobby [0-9])_")
-        for i in range(10):
-            role_name = f"_Claimed: Lobby {i}_"
-            self.assertTrue(regex.search(role_name))
-
-    def test_retrieve_lobby_by_emoji_name(self):
+    def test_retrieve_number_by_emoji(self):
         reactions = {}
         for num in range(10):
             emoji = str(num).encode()+b'\xef\xb8\x8f\xe2\x83\xa3'
