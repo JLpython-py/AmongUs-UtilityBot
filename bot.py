@@ -437,13 +437,13 @@ class Utils(commands.Bot):
 
 class GuildPoints(commands.Cog):
     def __init__(self, bot, *, tiers,
-                 names=("Guild Points", "Bounty Tickets")):
+                 names=("Guild", "Bounty")):
         self.bot = bot
         path = os.path.join('data', tiers)
         with open(path) as file:
             self.tiers = json.load(file)
-        self.point_regex = fr'_{names[0]}: ([0-9]+)_'
-        self.ticket_regex = fr'_{names[1]}: ([0-9]+)_'
+        self.point_regex = fr'_{names[0]} Points: ([0-9]+)_'
+        self.ticket_regex = fr'_{names[1]} Tickets: ([0-9]+)_'
         self.names = names
 
     
@@ -474,7 +474,28 @@ class GuildPoints(commands.Cog):
             "Points": points, "Current Tier": tiers[0], "Next Tier": tiers[1],
             "Points until next tier": diff}
         embed = discord.Embed(
-            title=f"{ctx.author.name}'s {self.names[0]}", color=color)
+            title=f"{ctx.author.name}'s {self.names[0]} points",
+            color=color)
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        embed.set_footer(
+            text=f"Gain new roles by accumulating {self.names[0]} points")
+        await ctx.send(embed=embed)
+
+    @self.command(name="tickets", pass_context=True)
+    async def tickets(self, ctx):
+        #Parse through member roles to get current tickets
+        tickets = 0
+        for role in ctx.author.roles:
+            if self.ticket_regex.search(role.name) is not None:
+                tickets = int(self.ticket_regex.search(role.name).group(1))
+                break
+        #Send ticket information
+        fields = {
+            "Tickets": tickets}
+        embed = discord.Embed(
+            title=f"{ctx.author.name}'s {self.names[0]} tickets",
+            color=0x00ff00)
         for field in fields:
             embed.add_field(name=field, value=fields[field])
         await ctx.send(embed=embed)
