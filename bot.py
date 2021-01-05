@@ -318,13 +318,14 @@ class Utils(commands.Bot):
 
 class GuildPoints(commands.Cog):
     def __init__(self, bot, *, tiers,
-                 names=("Guild", "Bounty")):
+                 channel="general"):
         self.bot = bot
         path = os.path.join('data', tiers)
         with open(path) as file:
             self.tiers = {int(k):v for k, v in json.load(file).items}
-        self.point_regex = re.compile(fr'_{names[0]} Points: ([0-9]+)_')
-        self.ticket_regex = re.compile(fr'_{names[1]} Tickets: ([0-9]+)_')
+        self.point_regex = re.compile(fr'_Guild Points: ([0-9]+)_')
+        self.ticket_regex = re.compile(fr'_Bounty Tickets: ([0-9]+)_')
+        self.channel = channel
         self.names = names
     
     @self.command(name="points", pass_context=True, aliases=["p"])
@@ -354,12 +355,12 @@ class GuildPoints(commands.Cog):
             "Points": points, "Current Tier": tiers[0], "Next Tier": tiers[1],
             "Points until next tier": diff}
         embed = discord.Embed(
-            title=f"{ctx.author.name}'s {self.names[0]} points",
+            title=f"{ctx.author.name}'s Guild points",
             color=color)
         for field in fields:
             embed.add_field(name=field, value=fields[field])
         embed.set_footer(
-            text=f"Gain new roles by accumulating {self.names[0]} points")
+            text=f"Gain new roles by accumulating Guild points")
         await ctx.send(embed=embed)
 
     @self.command(name="tickets", pass_context=True)
@@ -374,7 +375,7 @@ class GuildPoints(commands.Cog):
         fields = {
             "Tickets": tickets}
         embed = discord.Embed(
-            title=f"{ctx.author.name}'s {self.names[0]} tickets",
+            title=f"{ctx.author.name}'s Bounty tickets",
             color=0x00ff00)
         for field in fields:
             embed.add_field(name=field, value=fields[field])
@@ -402,8 +403,8 @@ class GuildPoints(commands.Cog):
                 points = int(regex.search(role.name).group(1))
                 break
         new_points = points + plus
-        names = [f"_{self.names[0]} Points: {points}_",
-                 f"_{self.names[0]} Points: {new_points}_"]
+        names = [f"_Guild Points: {points}_",
+                 f"_Guild Points: {new_points}_"]
         await self.guild_currency(member, names, mode=unit)
         await self.parse_tiers(member, [points, new_points])
 
@@ -418,16 +419,79 @@ class GuildPoints(commands.Cog):
         plus = random.choices(
             list(range(1, 10)), [(1/2)**n for n in range(1, 10)])[0]
         new_tickets = tickets + plus
-        names = [f"_{self.names[1]} Tickets: {tickets}_",
-                 f"_{self.names[1]} Tickets: {new_tickets}_"]
+        names = [f"_Bounty Tickets: {tickets}_",
+                 f"_Bounty Tickets: {new_tickets}_"]
         await self.guild_currency(message.author, names, mode='tickets')
         #Notify member
         direct_message = await message.author.create_dm()
         embed = discord.Embed(
-            title=f"Awarded {plus} {self.names[1]} Tickets", color=0x00ff00)
+            title=f"Awarded {plus} Bounty Tickets", color=0x00ff00)
         embed.add_field(name="Total Tickets", value=new_tickets)
         await direct_message.send(embed=embed)
 
+    async def create_bounty(self, message):
+        start = datetime.datetime.now()
+        end = start+datetime.timedelta(minutes=60)
+        embed = discord.Embed(title=f"New Bounty!", color=0x00ff00)
+        fields = {
+            "Enter this Bounty": "React to enter in this bounty",
+            "Message": message.content, "Author": message.author.name,
+            "Bounty Start": start.strftime("%D %T"),
+            "Bounty End": end.strftime("%D %T")}
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        channel = discord.utils.get(message.guild.channels, name=self.channel)
+        message = await channel.send(embed=embed)
+        #Add reactions for members to enter
+        reactions = [u"\u0031\ufe0f\u20e3", u"\u0032\ufe0f\u20e3",
+                     u"\u0033\ufe0f\u20e3", u"\u0034\ufe0f\u20e3",
+                     u"\u0035\ufe0f\u20e3", u"\u0036\ufe0f\u20e3",
+                     u"\u0037\ufe0f\u20e3", u"\u0038\ufe0f\u20e3",
+                     u"\u0039\ufe0f\u20e3", u"\u274c"]
+        for emoji in reactions:
+            await message.add_reaction(emoji)
+        #Update the countdown until the bounty has ended
+        while (end-datetime.datetime.now()).total_seconds() > 0:
+            continue
+        await self.award_bounty(message)
+
+    async def award_bounty(self, message):
+        channel = discord.utils.get(message.guild.channels, name="bounties")
+        message = await channel.fetch_message(message.id)
+        #Get the users and number of entries per user
+        reactions = [u"\u0031\ufe0f\u20e3", u"\u0032\ufe0f\u20e3",
+                     u"\u0033\ufe0f\u20e3", u"\u0034\ufe0f\u20e3",
+                     u"\u0035\ufe0f\u20e3", u"\u0036\ufe0f\u20e3",
+                     u"\u0037\ufe0f\u20e3", u"\u0038\ufe0f\u20e3",
+                     u"\u0039\ufe0f\u20e3"]
+        user_entries = {r.member.name:reactions.index(r.emoji.name)+1\
+                        for r in message.reactions}
+        await message.clear_reactions()
+        #Randomly select a winner and the number of points won
+        fib = lambda n: functools.reduce(
+            lambda x, n: [x[0], x[0]+x[1]], range(n), [0, 1])[0]
+        bounty = {
+            "Winner": random.choices(
+                list(user_entries), list(user_entries.values()))[0],
+            "Points": random.choices(
+                list(range(1, 11)), [1/fib(n) for n in range(1, 11)])[0]}
+        #Close bounty message
+        embed = discord.Embed(title="Bounty Awarded", color=0x00ff00)
+        embed.add_field(name="Winner", value=bounty["Winner"].name)
+        embed.add_field(name="Points", value=bounty["Points"])
+        await message.edit(embed=embed)
+        #Add points to member
+        points = 0
+        for role in bounty["Winner"].roles:
+            if self.point_regex.search(role.name):
+                points = int(self.point_regex.search(role.name).group(1))
+                break
+        new_points = points + bounty["Points"]
+        names = [f"_Guild Points: {points}_",
+                 f"_Guild Points: {new_points}_"]
+        await self.guild_currency(bounty["Winner"], names, mode='points')
+        await self.parse_tiers(bounty["Winner"], [points, new_points])
+            
     async def guild_currency(self, member, names, *, mode):
         mode = mode.lower()
         if mode == 'points':
