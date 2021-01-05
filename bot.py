@@ -429,6 +429,56 @@ class GuildPoints(commands.Cog):
         embed.add_field(name="Total Tickets", value=new_tickets)
         await direct_message.send(embed=embed)
 
+    async def enter_bounty(self, payload):
+        #Get information from payload
+        channel = self.get_channel(payload.channel_id)
+        guild = self.get_guild(payload.guild_id)
+        message = await channel.fetch_message(payload.message_id)
+        direct_message = await payload.member.create_dm()
+        #Verify member has not already entered bounty
+        if payload.member in [r.member for r in message.reactions]:
+            embed = discord.Embed(
+                title="You have already entered that bounty!", color=0x00ff00)
+            embed.add_field(
+                name="Withdraw Entry",
+                value="React with :x: or the reaction you entered with")
+            await direct_message.send(embed=embed)
+            await message.remove_reaction(payload.emoji, payload.member)
+            return
+        #Get the current number of tickets member has
+        tickets = 0
+        for role in payload.member.roles:
+            if self.ticket_regex.search(role.name):
+                tickets = int(role_regex.search(role.name).group(1))
+                break
+        #Verify member has enough tickets to enter
+        reactions = [u"\u0031\ufe0f\u20e3", u"\u0032\ufe0f\u20e3",
+                     u"\u0033\ufe0f\u20e3", u"\u0034\ufe0f\u20e3",
+                     u"\u0035\ufe0f\u20e3", u"\u0036\ufe0f\u20e3",
+                     u"\u0037\ufe0f\u20e3", u"\u0038\ufe0f\u20e3",
+                     u"\u0039\ufe0f\u20e3"]
+        entries = reactions.index(payload.emoji.name)+1
+        if entries > tickets:
+            embed = discord.Embed(
+                title="You don't have enough tickets!",
+                color=0xff0000)
+            embed.add_field(name="Tickets", value=tickets)
+            await direct_message.send(embed=embed)
+            await message.remove_reactoin(payload.emoji, payload.member)
+            return
+        new_tickets = tickets - entries
+        names = [f"_Bounty Tickets: {tickets}_",
+                 f"_Bounty Tickets: {new_tickets}_"]
+        await self.guild_currency(payload.member, names, mode='tickets')
+        #Notify member
+        embed = discord.Embed(title=f"Bounty Entry Successful", color=0x00ff00)
+        embed.add_field(name="Entries", value=entries)
+        embed.add_field(
+            name="Widthdraw Entry",
+            value="React with :x: or the reaction you entered with")
+        embed.add_field(name="Tickets", value=tickets)
+        await direct_message.send(embed=embed)
+
     async def create_bounty(self, message):
         start = datetime.datetime.now()
         end = start+datetime.timedelta(minutes=60)
