@@ -445,6 +445,33 @@ class GuildPoints(commands.Cog):
             embed.add_field(name=field, value=fields[field])
         await ctx.send(embed=embed)
 
+    @self.command(name="give", pass_context=True, aliases=["g"])
+    async def give(self, ctx, unit, member, quantity):
+        unit = unit.lower()
+        if unit == 'points':
+            regex = self.point_regex
+        elif unit == 'tickets':
+            regex = self.ticket_regex
+        else:
+            await ctx.send("You can only give points or tickets")
+            await ctx.message.delete()
+            return
+        if not ctx.message.raw_mentions:
+            await ctx.send("You have to mention someone")
+            await ctx.message.delete()
+            return
+        member = ctx.message.raw_menetions[0]
+        points, plus = 0, int(plus)
+        for role in member.roles:
+            if regex.search(role.name):
+                points = int(regex.search(role.name).group(1))
+                break
+        new_points = points + plus
+        names = [f"_{self.names[0]} Points: {points}_",
+                 f"_{self.names[0]} Points: {new_points}_"]
+        await self.guild_currency( member, names, mode=unit)
+        await self.parse_tiers(member, [points, new_points])
+
     async def guild_currency(self, member, names, *, mode):
         mode = mode.lower()
         if mode == 'points':
