@@ -435,6 +435,50 @@ class Utils(commands.Bot):
                 embed.add_field(name=field, value=fields[field])
             await ctx.send(embed=embed)
 
+class GuildPoints(commands.Cog):
+    def __init__(self, bot, *, tiers,
+                 names=("Guild Points", "Bounty Tickets")):
+        self.bot = bot
+        path = os.path.join('data', tiers)
+        with open(path) as file:
+            self.tiers = json.load(file)
+        self.point_regex = fr'_{names[0]}: ([0-9]+)_'
+        self.ticket_regex = fr'_{names[1]}: ([0-9]+)_'
+        self.names = names
+
+    
+    @self.command(name="points", pass_context=True, aliases=["p"])
+    async def points(self, ctx):
+        #Pasre through members roles to get current points
+        points = 0
+        for role in ctx.author.roles:
+            if self.point_regex.search(role.name) is not None:
+                points = int(self.point_regex.search(role.name).group(1))
+                break
+        #Get tier information from points
+        tiers = ["None", "Bronze"]
+        for pts in self.tiers:
+            if pts <= points:
+                tiers[0] = self.tiers[pts]
+            elif pts > points:
+                tiers[1] = self.tiers[pts]
+                diff = pts-points
+                break
+        if points >= 100:
+            tiers[1] = '---'
+            diff = '---'
+        #Send point and tier information
+        role = discord.utils.get(ctx.guild.roles, name=tiers[1])
+        color = 0x000000 if role is None else role.color
+        fields = {
+            "Points": points, "Current Tier": tiers[0], "Next Tier": tiers[1],
+            "Points until next tier": diff}
+        embed = discord.Embed(
+            title=f"{ctx.author.name}'s {self.names[0]}", color=color)
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        await ctx.send(embed=embed)
+
 class GhostPing(commands.Cog):
     def __init__(self, bot, *, ping):
         self.bot = bot
