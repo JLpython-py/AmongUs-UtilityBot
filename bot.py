@@ -381,60 +381,6 @@ class Utils(commands.Bot):
             await self.check_new_tiers(
                 ctx.guild, member, points, new_points)
 
-        @self.command(name="get_points", pass_context=True)
-        async def get_points(ctx):
-            ''' Get the number of guild points
-                Returned embed values:
-                - Number of points
-                - Current tier name
-                - Next tier name
-                - Number of points until the next tier
-'''
-            #Parse through member roles to get points
-            points = 0
-            role_regex = re.compile(r'_Guild Points: ([0-9]+)_')
-            for role in ctx.author.roles:
-                if role_regex.search(role.name) is not None:
-                    points = int(role_regex.search(role.name).group(1))
-                    break
-            #Parse through dictionary to get tier information from points
-            current_tier, next_tier = 'None', 'Bronze Contributor'
-            for pts in list(self.tiers):
-                if pts <= points:
-                    current_tier = self.tiers[pts]
-                elif pts > points:
-                    next_tier, until = self.tiers[pts], pts-points
-                    break
-            if points >= 100:
-                next_tier, until = '---', '---'
-            #Create and send an embed containing point and tier information
-            role = discord.utils.get(ctx.guild.roles, name=current_tier)
-            color = 0x000000 if role is None else role.color
-            fields = {
-                "Points": points, "Current Tier": current_tier,
-                "Next Tier": next_tier, "Points until next tier": until}
-            embed = discord.Embed(title=ctx.author.name, color=color)
-            for field in fields:
-                embed.add_field(name=field, value=fields[field])
-            await ctx.send(embed=embed)
-
-        @self.command(name="get_tickets", pass_context=True)
-        async def get_tickets(ctx):
-            #Parse through member roles to get tickets
-            tickets = 0
-            role_regex = re.compile(r'_Bounty Tickets: ([0-9]+)_')
-            for role in ctx.author.roles:
-                if role_regex.search(role.name) is not None:
-                    tickets = int(role_regex.search(role.name).group(1))
-                    break
-            fields = {"Total Bounty Tickets": tickets}
-            embed = discord.Embed(
-                title=f"Bounty Tickets for {ctx.author.name}",
-                color=0xff0000)
-            for field in fields:
-                embed.add_field(name=field, value=fields[field])
-            await ctx.send(embed=embed)
-
 class GuildPoints(commands.Cog):
     def __init__(self, bot, *, tiers,
                  names=("Guild", "Bounty")):
@@ -442,10 +388,9 @@ class GuildPoints(commands.Cog):
         path = os.path.join('data', tiers)
         with open(path) as file:
             self.tiers = json.load(file)
-        self.point_regex = fr'_{names[0]} Points: ([0-9]+)_'
-        self.ticket_regex = fr'_{names[1]} Tickets: ([0-9]+)_'
+        self.point_regex = re.compile(fr'_{names[0]} Points: ([0-9]+)_')
+        self.ticket_regex = re.compile(fr'_{names[1]} Tickets: ([0-9]+)_')
         self.names = names
-
     
     @self.command(name="points", pass_context=True, aliases=["p"])
     async def points(self, ctx):
@@ -500,6 +445,47 @@ class GuildPoints(commands.Cog):
             embed.add_field(name=field, value=fields[field])
         await ctx.send(embed=embed)
 
+    async def guild_currency(self, member, names, *, mode):
+        mode = mode.lower()
+        if mode == 'points':
+            regex = self.point_regex
+        elif mode == 'tickets':
+            regex = self.ticket_regex
+        else:
+            return
+        #Get new and old roles
+        roles = [discord.utils.get(member.guild.roles, name=names[0]),
+                 discord.utils.get(member.guild.roles, name-names[1])]
+        #Create new role if does not already exist
+        if roles[0] is None:
+            await guild.create_role(name=names[0])
+            roles[0] = discord.utils.get(member.guild.roles, name=names[0])
+        #Add new role and remove old role from member roles
+        await member.add_roles(roles[0])
+        if roles[1] is not None:
+            await member.remove_roles(roes[1])
+        #Delete old role if no other member has it
+        relevant_roles = []
+        for role in member.guild.roles:
+            if regex.search(role.name) is None:
+                continue
+            if any([role in user.roles for user in member.guild.members]):
+                relevent_roles.append(role)
+            if roles[1] and roles[1] not in relevant_roles:
+                await roles[1].delete()
+
+    async def parse_tiers(self, member, ptrange):
+        for pts in self.tiers:
+            if ptrange[0] < pts <= ptrange[1]:
+                new_tier = self.tiers[pts]
+                role = discord.utils.get(member.guild.roles, name=new_tier)
+                direct_message = await member.create_dm()
+                embed = discord.Embed(
+                    title="New Tier Reached!", color=role.color)
+                embed.add_field(name="New Role", value=new_tier)
+                await member.add_roles(role)
+                await direct_message.send(embed=embed)
+        
 class GhostPing(commands.Cog):
     def __init__(self, bot, *, ping):
         self.bot = bot
