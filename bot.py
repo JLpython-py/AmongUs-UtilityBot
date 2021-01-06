@@ -6,7 +6,6 @@
 '''
 
 import asyncio
-import csv
 import datetime
 import functools
 import json
@@ -29,32 +28,22 @@ class Utils(commands.Bot):
         '''
 '''
         self.name = name
-        self.prefix = prefix
         #Manage intents to allow bot to view all members
         intents = discord.Intents.default()
         intents.members = True
         commands.Bot.__init__(
-            self, command_prefix=self.prefix, intents=intents,
+            self, command_prefix=prefix, intents=intents,
             self_bot=False)
-        #Load regular expression and tier data
-        with open(os.path.join('data', 'tiers.csv')) as file:
-            self.tiers = dict(list(csv.reader(file)))
-            self.tiers = {int(k):v for k, v in self.tiers.items()}
-        with open(os.path.join('data', 'allowed_pings.txt')) as file:
-            self.allowed_pings = json.load(file)
-        allowed_moderations = {
-            "command_restrictions": False, "spam_detection": True,
-            "censor": True}
         #Call feature classes
         self.add_cog(VoiceChannelControl(
             self, category="Game Lobbies"))
-        self.add_cog(Moderation(
-            self, cmdrestrict="command_restrictions.txt",
-            spamdetect="spam_parameters.txt", censor="blacklisted_words.txt"))
+        #self.add_cog(Moderation(
+            #self, cmdrestrict="command_restrictions.txt",
+            #spamdetect="spam_parameters.txt", censor="blacklisted_words.txt"))
         self.add_cog(GhostPing(
             self, ping="allowed_pings.txt"))
-        #Execute commands
-        self.execute_commands()
+        self.add_cog(GuildPoints(
+            self, tiers="tiers.txt"))
 
     async def on_ready(self):
         ''' 
@@ -98,7 +87,7 @@ class Utils(commands.Bot):
         if message.author.bot:
             return
         cog = self.get_cog("Moderation")
-        if not await cog.check_all(message):
+        if cog is None or not await cog.check_all(message):
             await self.process_commands(message)
 
     async def on_raw_reaction_add(self, payload):
@@ -112,8 +101,6 @@ class Utils(commands.Bot):
         if channel.name == 'rules':
             if name in [u"\u2705"]:
                 await self.rule_agreement(payload)
-        elif channel.name == 'bounties':
-            await self.bounty_entry(payload)
 
     async def rule_agreement(self, payload):
         '''
@@ -138,33 +125,45 @@ class GuildPoints(commands.Cog):
         self.bot = bot
         path = os.path.join('data', tiers)
         with open(path) as file:
-            self.tiers = {int(k):v for k, v in json.load(file).items}
+            self.tiers = {int(k):int(v) for k, v in json.load(file).items()}
         self.point_regex = re.compile(fr'_Guild Points: ([0-9]+)_')
         self.ticket_regex = re.compile(fr'_Bounty Tickets: ([0-9]+)_')
         self.channel = channel
-        self.names = names
         self.bounty_reactions = [
             u"\u0031\ufe0f\u20e3", u"\u0032\ufe0f\u20e3",
             u"\u0033\ufe0f\u20e3", u"\u0034\ufe0f\u20e3",
             u"\u0035\ufe0f\u20e3", u"\u0036\ufe0f\u20e3",
             u"\u0037\ufe0f\u20e3", u"\u0038\ufe0f\u20e3",
             u"\u0039\ufe0f\u20e3"]
-    
-    @self.command(name="points", pass_context=True, aliases=["p"])
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload):
+        if payload.emoji.name == u"\u274c":
+            await self.widthdraw_entry(payload)
+        elif payload.emoji.name == self.bounty_reactions:
+            await self.enter_bounty(payload)
+        else:
+            channel = self.get_channel(payload.channel_id)
+            message = await channel.fetch_message(message_id)
+            await message.remove_reaction(payload.emoji, payload.member)
+
+    @commands.command(name="points", pass_context=True, aliases=["p"])
     async def points(self, ctx):
         #Pasre through members roles to get current points
         points = 0
-        for role in ctx.author.roles:
+        for role in ctx.message.author.roles:
             if self.point_regex.search(role.name) is not None:
                 points = int(self.point_regex.search(role.name).group(1))
                 break
         #Get tier information from points
-        tiers = ["None", "Bronze"]
+        tiers = ["---", "---"]
         for pts in self.tiers:
             if pts <= points:
-                tiers[0] = self.tiers[pts]
+                tiers[0] = discord.utils.get(
+                    ctx.guild.roles, id=self.tiers[pts]).name
             elif pts > points:
-                tiers[1] = self.tiers[pts]
+                tiers[1] = discord.utils.get(
+                    ctx.guild.roles, id=self.tiers[pts]).name
                 diff = pts-points
                 break
         if points >= 100:
@@ -172,10 +171,10 @@ class GuildPoints(commands.Cog):
             diff = '---'
         #Send point and tier information
         role = discord.utils.get(ctx.guild.roles, name=tiers[1])
-        color = 0x000000 if role is None else role.color
+        color = 0x00ff00 if role is None else role.color
         fields = {
-            "Points": points, "Current Tier": tiers[0], "Next Tier": tiers[1],
-            "Points until next tier": diff}
+            "Points": points, "Current Tier": tiers[0],
+            "Next Tier": tiers[1], "Points until next tier": diff}
         embed = discord.Embed(
             title=f"{ctx.author.name}'s Guild points",
             color=color)
@@ -185,7 +184,7 @@ class GuildPoints(commands.Cog):
             text=f"Gain new roles by accumulating Guild points")
         await ctx.send(embed=embed)
 
-    @self.command(name="tickets", pass_context=True)
+    @commands.command(name="tickets", pass_context=True, aliases=["t"])
     async def tickets(self, ctx):
         #Parse through member roles to get current tickets
         tickets = 0
@@ -197,13 +196,13 @@ class GuildPoints(commands.Cog):
         fields = {
             "Tickets": tickets}
         embed = discord.Embed(
-            title=f"{ctx.author.name}'s Bounty tickets",
+            title=f"{ctx.author.name}'s Bounty Tickets",
             color=0x00ff00)
         for field in fields:
             embed.add_field(name=field, value=fields[field])
         await ctx.send(embed=embed)
 
-    @self.command(name="give", pass_context=True, aliases=["g"])
+    @commands.command(name="give", pass_context=True, aliases=["g"])
     async def give(self, ctx, unit, member, quantity):
         unit = unit.lower()
         if unit == 'points':
@@ -218,17 +217,20 @@ class GuildPoints(commands.Cog):
             await ctx.send("You have to mention someone")
             await ctx.message.delete()
             return
-        member = ctx.message.raw_menetions[0]
-        points, plus = 0, int(plus)
+        member = discord.utils.get(
+            ctx.guild.members, id=ctx.message.raw_mentions[0])
+        units, quantity = 0, int(float(quantity))
         for role in member.roles:
             if regex.search(role.name):
-                points = int(regex.search(role.name).group(1))
+                units = int(regex.search(role.name).group(1))
                 break
-        new_points = points + plus
-        names = [f"_Guild Points: {points}_",
-                 f"_Guild Points: {new_points}_"]
+        new_units = units + quantity
+        currency = "Guild Points" if unit == 'points' else "Bounty Tickets"
+        names = [f"_{currency}: {units}_",
+                 f"_{currency}: {new_units}_"]
         await self.guild_currency(member, names, mode=unit)
-        await self.parse_tiers(member, [points, new_points])
+        if unit == 'points':
+            await self.parse_tiers(member, [units, new_units])
 
     async def award_tickets(self, message):
         #Parse through member roles to get the number of tickets
@@ -390,35 +392,37 @@ class GuildPoints(commands.Cog):
         else:
             return
         #Get new and old roles
-        roles = [discord.utils.get(member.guild.roles, name=names[0]),
-                 discord.utils.get(member.guild.roles, name-names[1])]
+        old = discord.utils.get(member.guild.roles, name=names[0])
+        new = discord.utils.get(member.guild.roles, name=names[1])
         #Create new role if does not already exist
-        if roles[0] is None:
-            await guild.create_role(name=names[0])
-            roles[0] = discord.utils.get(member.guild.roles, name=names[0])
+        if new is None:
+            await member.guild.create_role(name=names[1])
+            new = discord.utils.get(member.guild.roles, name=names[1])
         #Add new role and remove old role from member roles
-        await member.add_roles(roles[0])
-        if roles[1] is not None:
-            await member.remove_roles(roes[1])
+        await member.add_roles(new)
+        if old is not None:
+            await member.remove_roles(old)
         #Delete old role if no other member has it
-        relevant_roles = []
-        for role in member.guild.roles:
-            if regex.search(role.name) is None:
-                continue
-            if any([role in user.roles for user in member.guild.members]):
-                relevent_roles.append(role)
-            if roles[1] and roles[1] not in relevant_roles:
-                await roles[1].delete()
+        delete = True
+        for mem in member.guild.members:
+            if old in mem.roles:
+                delete = False
+                break
+        if old and delete:
+            await old.delete()
 
     async def parse_tiers(self, member, ptrange):
+        logging.info(locals())
         for pts in self.tiers:
             if ptrange[0] < pts <= ptrange[1]:
                 new_tier = self.tiers[pts]
-                role = discord.utils.get(member.guild.roles, name=new_tier)
+                logging.info(new_tier)
+                role = discord.utils.get(member.guild.roles, id=new_tier)
+                color = 0x00ff00 if role is None else role.color
                 direct_message = await member.create_dm()
                 embed = discord.Embed(
-                    title="New Tier Reached!", color=role.color)
-                embed.add_field(name="New Role", value=new_tier)
+                    title="New Tier Reached!", color=color)
+                embed.add_field(name="New Role", value=role.name)
                 await member.add_roles(role)
                 await direct_message.send(embed=embed)
         
@@ -522,9 +526,9 @@ class Moderation(commands.Cog):
             - Commands used without necessary roles
 '''
         #Get parameters
-        if not self.bot.prefix in message.content:
+        if not self.bot.command_prefix in message.content:
             return
-        command = message.content.split()[0].strip(self.bot.prefix)
+        command = message.content.split()[0].strip(self.bot.command_prefix)
         parameters = self.features["Command Restrictions"][command]
         restricted = False
         #Verify command used in correct channel
