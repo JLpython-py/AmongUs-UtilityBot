@@ -35,15 +35,10 @@ class Utils(commands.Bot):
             self, command_prefix=prefix, intents=intents,
             self_bot=False)
         #Call feature classes
-        self.add_cog(VoiceChannelControl(
-            self, category="Game Lobbies"))
-        #self.add_cog(Moderation(
-            #self, cmdrestrict="command_restrictions.txt",
-            #spamdetect="spam_parameters.txt", censor="blacklisted_words.txt"))
-        self.add_cog(GhostPing(
-            self, ping="allowed_pings.txt"))
-        self.add_cog(GuildPoints(
-            self, tiers="tiers.txt"))
+        self.add_cog(VoiceChannelControl(self, category="Game Lobbies"))
+        self.add_cog(Moderation(self, cmd=True, spam=True, censor=True))
+        self.add_cog(GhostPing(self))
+        self.add_cog(GuildPoints(self))
 
     async def on_ready(self):
         ''' 
@@ -120,9 +115,11 @@ class Utils(commands.Bot):
         await direct_message.send(embed=embed)
 
 class GuildPoints(commands.Cog):
-    def __init__(self, bot, *, tiers,
-                 channel="general"):
+    ''' Manage Guild Points and Bounty Tickets which can be awarded to members
+'''
+    def __init__(self, bot, *, channel="general"):
         self.bot = bot
+        tiers = 'tiers.txt'
         path = os.path.join('data', tiers)
         with open(path) as file:
             self.tiers = {int(k):int(v) for k, v in json.load(file).items()}
@@ -138,18 +135,18 @@ class GuildPoints(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
+        if payload.member.bot:
+            return
         if payload.emoji.name == u"\u274c":
             await self.widthdraw_entry(payload)
         elif payload.emoji.name == self.bounty_reactions:
             await self.enter_bounty(payload)
-        else:
-            channel = self.get_channel(payload.channel_id)
-            message = await channel.fetch_message(message_id)
-            await message.remove_reaction(payload.emoji, payload.member)
 
     @commands.command(name="points", pass_context=True, aliases=["p"])
     async def points(self, ctx):
-        #Pasre through members roles to get current points
+        ''' Get number of Guild Points a member has
+'''
+        #Parse through members roles to get current points
         points = 0
         for role in ctx.message.author.roles:
             if self.point_regex.search(role.name) is not None:
@@ -186,6 +183,8 @@ class GuildPoints(commands.Cog):
 
     @commands.command(name="tickets", pass_context=True, aliases=["t"])
     async def tickets(self, ctx):
+        ''' Get number of Bounty Tickets a member has
+'''
         #Parse through member roles to get current tickets
         tickets = 0
         for role in ctx.author.roles:
@@ -204,6 +203,8 @@ class GuildPoints(commands.Cog):
 
     @commands.command(name="give", pass_context=True, aliases=["g"])
     async def give(self, ctx, unit, member, quantity):
+        ''' Give Guild Points or Bounty Tickets to a member
+'''
         unit = unit.lower()
         if unit == 'points':
             regex = self.point_regex
@@ -233,6 +234,8 @@ class GuildPoints(commands.Cog):
             await self.parse_tiers(member, [units, new_units])
 
     async def award_tickets(self, message):
+        ''' Award a random number of tickets to a member
+'''
         #Parse through member roles to get the number of tickets
         tickets = 0
         for role in message.author.roles:
@@ -254,6 +257,8 @@ class GuildPoints(commands.Cog):
         await direct_message.send(embed=embed)
 
     async def enter_bounty(self, payload):
+        ''' Enter a Guild Point Bounty with a number of tickets
+'''
         #Get information from payload
         channel = self.get_channel(payload.channel_id)
         guild = self.get_guild(payload.guild_id)
@@ -300,6 +305,8 @@ class GuildPoints(commands.Cog):
         await direct_message.send(embed=embed)
 
     async def widthdraw_entry(self, payload):
+        ''' Withdraw all entries in a Guild Points Bounty and refund tickets
+'''
         #Get information from payload
         channel = self.get_channel(payload.channel_id)
         guild = self.get_guild(payload.guild_id)
@@ -329,6 +336,8 @@ class GuildPoints(commands.Cog):
         await direct_message.send(embed=embed)
 
     async def create_bounty(self, message):
+        ''' Create a Guild Point Bounty for members to enter in
+'''
         start = datetime.datetime.now()
         end = start+datetime.timedelta(minutes=60)
         embed = discord.Embed(title=f"New Bounty!", color=0x00ff00)
@@ -351,6 +360,8 @@ class GuildPoints(commands.Cog):
         await self.award_bounty(message)
 
     async def award_bounty(self, message):
+        ''' Award a random number of Guild Points to a random member
+'''
         channel = discord.utils.get(message.guild.channels, name="bounties")
         message = await channel.fetch_message(message.id)
         #Get the users and number of entries per user
@@ -384,6 +395,8 @@ class GuildPoints(commands.Cog):
         await self.parse_tiers(bounty["Winner"], [points, new_points])
             
     async def guild_currency(self, member, names, *, mode):
+        ''' Manage the number of Guild Points or Bounty Tickets a member has
+'''
         mode = mode.lower()
         if mode == 'points':
             regex = self.point_regex
@@ -412,11 +425,11 @@ class GuildPoints(commands.Cog):
             await old.delete()
 
     async def parse_tiers(self, member, ptrange):
-        logging.info(locals())
+        ''' Check if a member achieved a new Guild Point tier
+'''
         for pts in self.tiers:
             if ptrange[0] < pts <= ptrange[1]:
                 new_tier = self.tiers[pts]
-                logging.info(new_tier)
                 role = discord.utils.get(member.guild.roles, id=new_tier)
                 color = 0x00ff00 if role is None else role.color
                 direct_message = await member.create_dm()
@@ -427,11 +440,14 @@ class GuildPoints(commands.Cog):
                 await direct_message.send(embed=embed)
         
 class GhostPing(commands.Cog):
-    def __init__(self, bot, *, ping):
+    ''' Detect if a memeber ghost pings a role, member, or everyone
+'''
+    def __init__(self, bot):
         self.bot = bot
-        path = os.path.join('data', ping)
-        with open(path) as file:
-            self.pings = json.load(file)
+        file = 'allowed_pings.txt'
+        path = os.path.join('data', file)
+        with open(path) as f:
+            self.data = json.load(f)
         self.fields = {}
 
     @commands.Cog.listener()
@@ -440,20 +456,24 @@ class GhostPing(commands.Cog):
         await self.check_all(message)
 
     async def check_all(self, message):
+        ''' Check all disallowed categories if the message mentions it
+'''
         pinged = []
         self.fields["User"] = message.author.name
         self.fields["Channel"] = message.channel.name
         self.fields["Message"] = message.content
-        if not self.pings["everyone"]:
+        if not self.data["everyone"]:
             pinged.append(self.everyone_pings(message))
-        if not self.pings["roles"]:
+        if not self.data["roles"]:
             pinged.append(self.role_pings(message))
-        if not self.pings["members"]:
+        if not self.data["members"]:
             pinged.append(self.member_pings(message))
         if not any(pinged):
             self.fields = {}
             return False
-        embed = discord.Embed(title="Ghost Ping Detected", color=0xff0000)
+        embed = discord.Embed(
+            title="Ghost Ping Detected :no_entry_sign::ghost:",
+            color=0xff0000)
         for field in self.fields:
             embed.add_field(name=field, value=self.fields[field])
         embed.set_footer(
@@ -462,12 +482,16 @@ class GhostPing(commands.Cog):
         return True
 
     def everyone_pings(self, message):
+        ''' Check if message mentions everyone
+'''
         if not message.mention_everyone:
             return False
         self.fields["Mentions @everyone"] = "Yes"
         return True
 
     def role_pings(self, message):
+        ''' Check if message mentions any roles
+'''
         if not message.raw_role_mentions:
             return False
         roles = [discord.utils.get(message.guild.roles, id=i).name\
@@ -476,6 +500,8 @@ class GhostPing(commands.Cog):
         return True
 
     def member_pings(self, message):
+        ''' Check if message mentions any members
+'''
         if not message.raw_mentions:
             return False
         members = [discord.utils.get(message.guild.members, id=i).name\
@@ -486,35 +512,34 @@ class GhostPing(commands.Cog):
 class Moderation(commands.Cog):
     ''' Parse messages with various features to moderate a text channel
 '''
-    def __init__(self, bot, *,
-                 cmdrestrict=None, spamdetect=None, censor=None):
+    def __init__(self, bot, *, cmd=False, spam=False, censor=False):
         self.bot = bot
-        args = {
-            "Command Restrictions": cmdrestrict,
-            "Spam Detection": spamdetect,
-            "Censor": censor}
-        self.features = {
-            'Command Restrictions': None,
-            'Spam Detection': None,
-            'Censor': None}
-        for arg in args:
-            if args[arg] is None:
+        files = {
+            "Command Restrictions": 'command_restrictions.txt',
+            "Spam Detection": 'spam_detection.txt',
+            "Censor": 'censor.txt'}
+        self.data = dict(zip(list(files), list(locals().values())))
+        self.functions = {
+            "Command Restrictions": self.command_restrictions,
+            "Spam Detection": self.spam_detection,
+            "Censor": self.censor}
+        for feat in files:
+            if not self.data[feat]:
                 continue
-            path = os.path.join('data', args[arg])
+            path = os.path.join('data', files[feat])
             with open(path) as file:
-                self.features[arg] = json.load(file)
+                self.data[feat] = json.load(file)
 
     async def check_all(self, message):
         ''' Parse message with all enabled features
 '''
         #Delete messages which are flagged with any enabled feature
         flags = []
-        if self.features["Command Restrictions"]:
-            flags.append(await self.command_restrictions(message))
-        if self.features["Spam Detection"]:
-            flags.append(await self.spam_detection(message))
-        if self.features["Censor"]:
-            flags.append(await self.censor(message))
+        for feat in self.data:
+            if not self.data[feat]:
+                continue
+            func = self.functions.get(feat)
+            flags.append(await func(message))
         if any(flags):
             await message.delete()
             return True
@@ -527,9 +552,11 @@ class Moderation(commands.Cog):
 '''
         #Get parameters
         if not self.bot.command_prefix in message.content:
-            return
+            return False
         command = message.content.split()[0].strip(self.bot.command_prefix)
-        parameters = self.features["Command Restrictions"][command]
+        parameters = self.data["Command Restrictions"].get(command)
+        if parameters is None:
+            return False
         restricted = False
         #Verify command used in correct channel
         channels = parameters['channels']
@@ -562,7 +589,7 @@ class Moderation(commands.Cog):
         ''' Flag member if they send too many messages too quickly
 '''
         #Get parameters and initial conditions
-        parameters = self.features["Spam Detection"]
+        parameters = self.data["Spam Detection"]
         spam = False
         tracked_messages = []
         start_time = message.created_at
@@ -587,7 +614,8 @@ class Moderation(commands.Cog):
             title=f"Member Marked for Spam", color=0x00ff00)
         fields = {
             "Marked as Spam": f"{message.author.mention} messaged too quickly",
-            "Message Limit": limit, "Maximum Time Interval": interval,
+            "Message Limit": parameters['Limit'],
+            "Maximum Time Interval": parameters['Limit'],
             "Discovered Messages": len(tracked_messages)}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
@@ -600,7 +628,7 @@ class Moderation(commands.Cog):
             Words will not be flagged if word stands alone in another word
 '''
         #Get parameters
-        parameters = self.features["Censor"]
+        parameters = self.data["Censor"]
         blacklist = parameters["Blacklist"]
         separators = parameters["Separators"]
         excluded = parameters["Excluded"]
