@@ -1,5 +1,5 @@
 #! python3
-# bots.py
+# bot.py
 
 '''
 
@@ -22,11 +22,9 @@ logging.basicConfig(
     format=' %(asctime)s - %(levelname)s - %(message)s')
 
 class Utils(commands.Bot):
-    ''' 
+    '''
 '''
     def __init__(self, *, prefix, name):
-        '''
-'''
         self.name = name
         #Manage intents to allow bot to view all members
         intents = discord.Intents.default()
@@ -41,7 +39,7 @@ class Utils(commands.Bot):
         self.add_cog(GuildPoints(self))
 
     async def on_ready(self):
-        ''' 
+        '''
 '''
         logging.info("Ready: %s", self.name)
 
@@ -123,8 +121,8 @@ class GuildPoints(commands.Cog):
         path = os.path.join('data', tiers)
         with open(path) as file:
             self.tiers = {int(k):int(v) for k, v in json.load(file).items()}
-        self.point_regex = re.compile(fr'_Guild Points: ([0-9]+)_')
-        self.ticket_regex = re.compile(fr'_Bounty Tickets: ([0-9]+)_')
+        self.point_regex = re.compile(r'_Guild Points: ([0-9]+)_')
+        self.ticket_regex = re.compile(r'_Bounty Tickets: ([0-9]+)_')
         self.channel = channel
         self.bounty_reactions = [
             u"\u0031\ufe0f\u20e3", u"\u0032\ufe0f\u20e3",
@@ -178,7 +176,7 @@ class GuildPoints(commands.Cog):
         for field in fields:
             embed.add_field(name=field, value=fields[field])
         embed.set_footer(
-            text=f"Gain new roles by accumulating Guild points")
+            text="Gain new roles by accumulating Guild points")
         await ctx.send(embed=embed)
 
     @commands.command(name="tickets", pass_context=True, aliases=["t"])
@@ -229,7 +227,7 @@ class GuildPoints(commands.Cog):
         currency = "Guild Points" if unit == 'points' else "Bounty Tickets"
         names = [f"_{currency}: {units}_",
                  f"_{currency}: {new_units}_"]
-        await self.guild_currency(member, names, mode=unit)
+        await self.guild_currency(member, names)
         if unit == 'points':
             await self.parse_tiers(member, [units, new_units])
 
@@ -240,7 +238,7 @@ class GuildPoints(commands.Cog):
         tickets = 0
         for role in message.author.roles:
             if self.ticket_regex.search(role.name):
-                tickets = int(role_regex.search(role.name).group(1))
+                tickets = int(self.ticket_regex.search(role.name).group(1))
                 break
         #Award a random number of tickets
         plus = random.choices(
@@ -248,7 +246,7 @@ class GuildPoints(commands.Cog):
         new_tickets = tickets + plus
         names = [f"_Bounty Tickets: {tickets}_",
                  f"_Bounty Tickets: {new_tickets}_"]
-        await self.guild_currency(message.author, names, mode='tickets')
+        await self.guild_currency(message.author, names)
         #Notify member
         direct_message = await message.author.create_dm()
         embed = discord.Embed(
@@ -260,8 +258,7 @@ class GuildPoints(commands.Cog):
         ''' Enter a Guild Point Bounty with a number of tickets
 '''
         #Get information from payload
-        channel = self.get_channel(payload.channel_id)
-        guild = self.get_guild(payload.guild_id)
+        channel = self.bot.get_channel(payload.channel_id)
         message = await channel.fetch_message(payload.message_id)
         direct_message = await payload.member.create_dm()
         #Verify member has not already entered bounty
@@ -278,7 +275,7 @@ class GuildPoints(commands.Cog):
         tickets = 0
         for role in payload.member.roles:
             if self.ticket_regex.search(role.name):
-                tickets = int(role_regex.search(role.name).group(1))
+                tickets = int(self.ticket_regex.search(role.name).group(1))
                 break
         #Verify member has enough tickets to enter
         entries = self.bounty_reactions.index(payload.emoji.name)+1
@@ -293,7 +290,7 @@ class GuildPoints(commands.Cog):
         new_tickets = tickets - entries
         names = [f"_Bounty Tickets: {tickets}_",
                  f"_Bounty Tickets: {new_tickets}_"]
-        await self.guild_currency(payload.member, names, mode='tickets')
+        await self.guild_currency(payload.member, names)
         #Notify member
         embed = discord.Embed(
             title="Bounty Entry Successful", color=0x00ff00)
@@ -308,8 +305,7 @@ class GuildPoints(commands.Cog):
         ''' Withdraw all entries in a Guild Points Bounty and refund tickets
 '''
         #Get information from payload
-        channel = self.get_channel(payload.channel_id)
-        guild = self.get_guild(payload.guild_id)
+        channel = self.bot.get_channel(payload.channel_id)
         message = await channel.fetch_message(payload.message_id)
         direct_message = await payload.member.create_dm()
         #Get tickets used by member
@@ -322,13 +318,13 @@ class GuildPoints(commands.Cog):
         tickets = 0
         for role in payload.member.roles:
             if self.ticket_regex.search(role.name):
-                tickets = int(role_regex.search(role.name).group(1))
+                tickets = int(self.ticket_regex.search(role.name).group(1))
                 break
         #Refund tickets to member
         new_tickets = tickets + entries
         names = [f"_Bounty Tickets: {tickets}_",
                  f"_Bounty Tickets: {new_tickets}_"]
-        await self.guild_currency(payload.member, names, mode='tickets')
+        await self.guild_currency(payload.member, names)
         #Notify member
         embed = discord.Embed(
             title="Bounty Withdrawl Successful", color=0x00ff00)
@@ -340,7 +336,7 @@ class GuildPoints(commands.Cog):
 '''
         start = datetime.datetime.now()
         end = start+datetime.timedelta(minutes=60)
-        embed = discord.Embed(title=f"New Bounty!", color=0x00ff00)
+        embed = discord.Embed(title="New Bounty!", color=0x00ff00)
         fields = {
             "Enter this Bounty": "React to enter in this bounty",
             "Message": message.content, "Author": message.author.name,
@@ -391,19 +387,12 @@ class GuildPoints(commands.Cog):
         new_points = points + bounty["Points"]
         names = [f"_Guild Points: {points}_",
                  f"_Guild Points: {new_points}_"]
-        await self.guild_currency(bounty["Winner"], names, mode='points')
+        await self.guild_currency(bounty["Winner"], names)
         await self.parse_tiers(bounty["Winner"], [points, new_points])
-            
-    async def guild_currency(self, member, names, *, mode):
+
+    async def guild_currency(self, member, names):
         ''' Manage the number of Guild Points or Bounty Tickets a member has
 '''
-        mode = mode.lower()
-        if mode == 'points':
-            regex = self.point_regex
-        elif mode == 'tickets':
-            regex = self.ticket_regex
-        else:
-            return
         #Get new and old roles
         old = discord.utils.get(member.guild.roles, name=names[0])
         new = discord.utils.get(member.guild.roles, name=names[1])
@@ -438,16 +427,16 @@ class GuildPoints(commands.Cog):
                 embed.add_field(name="New Role", value=role.name)
                 await member.add_roles(role)
                 await direct_message.send(embed=embed)
-        
+
 class GhostPing(commands.Cog):
     ''' Detect if a memeber ghost pings a role, member, or everyone
 '''
     def __init__(self, bot):
         self.bot = bot
-        file = 'allowed_pings.txt'
-        path = os.path.join('data', file)
-        with open(path) as f:
-            self.data = json.load(f)
+        filename = 'allowed_pings.txt'
+        path = os.path.join('data', filename)
+        with open(path) as file:
+            self.data = json.load(file)
         self.fields = {}
 
     @commands.Cog.listener()
@@ -507,26 +496,29 @@ class GhostPing(commands.Cog):
         members = [discord.utils.get(message.guild.members, id=i).name\
                    for i in message.raw_mentions]
         self.fields["Member Mentions"] = ', '.join(members)
-        return Ture
+        return True
 
 class Moderation(commands.Cog):
     ''' Parse messages with various features to moderate a text channel
 '''
     def __init__(self, bot, *, cmd=False, spam=False, censor=False):
         self.bot = bot
-        files = {
+        filenames = {
             "Command Restrictions": 'command_restrictions.txt',
             "Spam Detection": 'spam_detection.txt',
             "Censor": 'censor.txt'}
-        self.data = dict(zip(list(files), list(locals().values())))
+        self.data = {
+            "Command Restrictions": cmd,
+            "Spam Detection": spam,
+            "Censor": censor}
         self.functions = {
             "Command Restrictions": self.command_restrictions,
             "Spam Detection": self.spam_detection,
             "Censor": self.censor}
-        for feat in files:
+        for feat in filenames:
             if not self.data[feat]:
                 continue
-            path = os.path.join('data', files[feat])
+            path = os.path.join('data', filenames[feat])
             with open(path) as file:
                 self.data[feat] = json.load(file)
 
@@ -544,7 +536,7 @@ class Moderation(commands.Cog):
             await message.delete()
             return True
         return False
-        
+
     async def command_restrictions(self, message):
         ''' Flag command used by members inproperly
             - Commands used outside of allowed channel(s)
@@ -575,7 +567,7 @@ class Moderation(commands.Cog):
             discord.utils.get(message.guild.roles, id=r).name\
             for r in roles]
         embed = discord.Embed(
-            title=f"Command Used Improperly", color=0x00ff00)
+            title="Command Used Improperly", color=0x00ff00)
         fields = {
             "Command Name": f"`{command}`",
             "Allowed Channels": '-\n'.join(channel_names),
@@ -611,7 +603,7 @@ class Moderation(commands.Cog):
         await message.channel.delete_messages(tracked_messages)
         #Flag member for spam
         embed = discord.Embed(
-            title=f"Member Marked for Spam", color=0x00ff00)
+            title="Member Marked for Spam", color=0x00ff00)
         fields = {
             "Marked as Spam": f"{message.author.mention} messaged too quickly",
             "Message Limit": parameters['Limit'],
@@ -656,7 +648,7 @@ class Moderation(commands.Cog):
             value=message.author.mention)
         await message.channel.send(embed=embed)
         return True
-        
+
 class VoiceChannelControl(commands.Cog):
     ''' Allow guild member to be able to claim control of a voice channel
         Members can control member voices in a voice channel they claimed
@@ -704,7 +696,7 @@ class VoiceChannelControl(commands.Cog):
             return
         await self.claim_request_panel(ctx)
         await ctx.message.delete()
-        
+
     async def claim_request_panel(self, ctx):
         ''' Send an embed with reactions for member to claim a voice channel
 '''
