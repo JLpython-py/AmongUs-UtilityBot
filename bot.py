@@ -111,18 +111,19 @@ class ReactionRoles(commands.Cog):
         path = os.path.join('data', messages)
         with open(path) as file:
             self.messages = {int(k):v for k, v in json.load(file).items()}
-        for msg in self.messages:
-            self.messages[msg] = {
-                k:int(v) for k, v in self.messages[msg].items()}
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
+        if paylod.member.bot:
+            return
         if payload.message_id not in self.messages:
             return
         await self.manage_rroles(payload, mode='+')
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload):
+        if payload.member.bot:
+            return
         if payload.message_id not in self.messages:
             return
         await self.manage_rroles(payload, mode='-')
@@ -130,15 +131,24 @@ class ReactionRoles(commands.Cog):
     async def manage_rroles(self, payload, *, mode):
         logging.info(payload)
         guild = self.bot.get_guild(payload.guild_id)
+        channel = self.bot.get_channel(payload.channel_id)
+        message = await channel.fetch_message(payload.message_id)
         member = guild.get_member(payload.user_id)
         data = self.messages.get(payload.message_id)
         role = discord.utils.get(
             guild.roles, id=data.get(payload.emoji.name))
-        type(member)
-        if mode == '+':
-            await member.add_roles(role)
-        elif mode == '-':
-            await member.remove_roles(role)
+        for roleid in data[payload.emoji.name]:
+            role = discord.utils.get(
+                guild.roles, id=int(roleid))
+            if mode == '+':
+                await member.add_roles(role)
+                for rxn in message.reactions:
+                    if rxn.emoji.name == payload.emoji.name:
+                        continue
+                    await message.remove_reaction(
+                        rxn, member)
+            elif mode == '-':
+                await member.remove_roles(role)
     
 class GuildPoints(commands.Cog):
     ''' Manage Guild Points and Bounty Tickets which can be awarded to members
@@ -448,6 +458,14 @@ class GuildPoints(commands.Cog):
             if ptrange[0] < pts <= ptrange[1]:
                 new_tier = self.tiers[pts]
                 role = discord.utils.get(member.guild.roles, id=new_tier)
+                divider = discord.utils.get(
+                    member.guild.roles, name='__________ Tiers __________')
+                if divider is None:
+                    await member.guild.create_role(
+                        name='__________ Tiers __________')
+                    divider = discord.utils.get(
+                    member.guild.roles, name='__________ Tiers __________')
+                await member.add_roles(divider)
                 color = 0x00ff00 if role is None else role.color
                 direct_message = await member.create_dm()
                 embed = discord.Embed(
