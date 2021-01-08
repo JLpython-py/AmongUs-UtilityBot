@@ -29,6 +29,7 @@ class Utils(commands.Bot):
         #Manage intents to allow bot to view all members
         intents = discord.Intents.default()
         intents.members = True
+        intents.guilds = True
         commands.Bot.__init__(
             self, command_prefix=prefix, intents=intents,
             self_bot=False)
@@ -118,16 +119,26 @@ class ReactionRoles(commands.Cog):
     async def on_raw_reaction_add(self, payload):
         if payload.message_id not in self.messages:
             return
-        await self.grant_role(payload)
+        await self.manage_rroles(payload, mode='+')
 
-    async def grant_role(self, payload):
+    @commands.Cog.listener()
+    async def on_raw_reaction_remove(self, payload):
+        if payload.message_id not in self.messages:
+            return
+        await self.manage_rroles(payload, mode='-')
+
+    async def manage_rroles(self, payload, *, mode):
+        logging.info(payload)
         guild = self.bot.get_guild(payload.guild_id)
+        member = guild.get_member(payload.user_id)
         data = self.messages.get(payload.message_id)
         role = discord.utils.get(
             guild.roles, id=data.get(payload.emoji.name))
-        logging.info(payload.member.name)
-        logging.info(role.name)
-        await payload.member.add_roles(role)
+        type(member)
+        if mode == '+':
+            await member.add_roles(role)
+        elif mode == '-':
+            await member.remove_roles(role)
     
 class GuildPoints(commands.Cog):
     ''' Manage Guild Points and Bounty Tickets which can be awarded to members
