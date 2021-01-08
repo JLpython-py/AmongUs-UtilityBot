@@ -114,7 +114,7 @@ class ReactionRoles(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
-        if paylod.member.bot:
+        if payload.member.bot:
             return
         if payload.message_id not in self.messages:
             return
@@ -122,8 +122,6 @@ class ReactionRoles(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload):
-        if payload.member.bot:
-            return
         if payload.message_id not in self.messages:
             return
         await self.manage_rroles(payload, mode='-')
