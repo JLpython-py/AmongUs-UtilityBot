@@ -33,6 +33,7 @@ class Utils(commands.Bot):
             self, command_prefix=prefix, intents=intents,
             self_bot=False)
         #Call feature classes
+        self.add_cog(ReactionRoles(self))
         self.add_cog(VoiceChannelControl(self, category="Game Lobbies"))
         self.add_cog(Moderation(self, cmd=True, spam=True, censor=True))
         self.add_cog(GhostPing(self))
@@ -83,18 +84,6 @@ class Utils(commands.Bot):
         if cog is None or not await cog.check_all(message):
             await self.process_commands(message)
 
-    async def on_raw_reaction_add(self, payload):
-        logging.info("Raw Reaction Add: %s", payload)
-        #Ignore bot reactions
-        if payload.member.bot:
-            return
-        #Check if the reaction was used as a command
-        channel = self.get_channel(payload.channel_id)
-        name = payload.emoji.name
-        if channel.name == 'rules':
-            if name in [u"\u2705"]:
-                await self.rule_agreement(payload)
-
     async def rule_agreement(self, payload):
         '''
 '''
@@ -112,6 +101,34 @@ class Utils(commands.Bot):
             embed.add_field(name=field, value=fields[field])
         await direct_message.send(embed=embed)
 
+class ReactionRoles(commands.Cog):
+    ''' Grant member role when they react to message
+'''
+    def __init__(self, bot):
+        self.bot = bot
+        messages = 'messages.txt'
+        path = os.path.join('data', messages)
+        with open(path) as file:
+            self.messages = {int(k):v for k, v in json.load(file).items()}
+        for msg in self.messages:
+            self.messages[msg] = {
+                k:int(v) for k, v in self.messages[msg].items()}
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload):
+        if payload.message_id not in self.messages:
+            return
+        await self.grant_role(payload)
+
+    async def grant_role(self, payload):
+        guild = self.bot.get_guild(payload.guild_id)
+        data = self.messages.get(payload.message_id)
+        role = discord.utils.get(
+            guild.roles, id=data.get(payload.emoji.name))
+        logging.info(payload.member.name)
+        logging.info(role.name)
+        await payload.member.add_roles(role)
+    
 class GuildPoints(commands.Cog):
     ''' Manage Guild Points and Bounty Tickets which can be awarded to members
 '''
