@@ -85,23 +85,6 @@ class Utils(commands.Bot):
         if cog is None or not await cog.check_all(message):
             await self.process_commands(message)
 
-    async def rule_agreement(self, payload):
-        '''
-'''
-        #Get information from payload
-        user = payload.member
-        guild = self.get_guild(payload.guild_id)
-        #Grant user the 'Member' role
-        role = discord.utils.get(guild.roles, name="Member")
-        await user.add_roles(role)
-        direct_message = await user.create_dm()
-        embed = discord.Embed(title="Membership Granted", color=0x00ff00)
-        fields = {
-            "Member": "'Member' and general server acess have been granted"}
-        for field in fields:
-            embed.add_field(name=field, value=fields[field])
-        await direct_message.send(embed=embed)
-
 class ReactionRoles(commands.Cog):
     ''' Grant member role when they react to message
 '''
@@ -127,19 +110,22 @@ class ReactionRoles(commands.Cog):
         await self.manage_rroles(payload, mode='-')
 
     async def manage_rroles(self, payload, *, mode):
-        logging.info(payload)
+        ''' Add/Remove role(s) if the member added/removed a reaction
+'''
+        #Get informatino from paylaod
         guild = self.bot.get_guild(payload.guild_id)
         channel = self.bot.get_channel(payload.channel_id)
         message = await channel.fetch_message(payload.message_id)
         member = guild.get_member(payload.user_id)
         data = self.messages.get(payload.message_id)
-        role = discord.utils.get(
-            guild.roles, id=data.get(payload.emoji.name))
+        #Manage all roles according to the emoji used
         for roleid in data[payload.emoji.name]:
+            #Get role from emoji
             role = discord.utils.get(
                 guild.roles, id=int(roleid))
             if mode == '+':
                 await member.add_roles(role)
+                #Remove all other reactions used by member
                 for rxn in message.reactions:
                     if rxn.emoji.name == payload.emoji.name:
                         continue
@@ -173,7 +159,7 @@ class GuildPoints(commands.Cog):
             return
         if payload.emoji.name == u"\u274c":
             await self.widthdraw_entry(payload)
-        elif payload.emoji.name == self.bounty_reactions:
+        elif payload.emoji.name in self.bounty_reactions:
             await self.enter_bounty(payload)
 
     @commands.command(name="points", pass_context=True, aliases=["p"])
@@ -239,10 +225,10 @@ class GuildPoints(commands.Cog):
     async def give(self, ctx, unit, member, quantity):
         ''' Give Guild Points or Bounty Tickets to a member
 '''
-        unit = unit.lower()
-        if unit == 'points':
+        unit = unit.lower()[0]
+        if unit == 'p':
             regex = self.point_regex
-        elif unit == 'tickets':
+        elif unit == 'p':
             regex = self.ticket_regex
         else:
             await ctx.send("You can only give points or tickets")
@@ -260,7 +246,7 @@ class GuildPoints(commands.Cog):
                 units = int(regex.search(role.name).group(1))
                 break
         new_units = units + quantity
-        currency = "Guild Points" if unit == 'points' else "Bounty Tickets"
+        currency = "Guild Points" if unit == 'p' else "Bounty Tickets"
         names = [f"_{currency}: {units}_",
                  f"_{currency}: {new_units}_"]
         await self.guild_currency(member, names)
@@ -278,7 +264,8 @@ class GuildPoints(commands.Cog):
                 break
         #Award a random number of tickets
         plus = random.choices(
-            list(range(1, 10)), [(1/2)**n for n in range(1, 10)])[0]
+            list(range(1, 10)),
+            [(1/2)**n for n in range(1, 10)])[0]
         new_tickets = tickets + plus
         names = [f"_Bounty Tickets: {tickets}_",
                  f"_Bounty Tickets: {new_tickets}_"]
@@ -402,13 +389,13 @@ class GuildPoints(commands.Cog):
             for r in message.reactions}
         await message.clear_reactions()
         #Randomly select a winner and the number of points won
-        fib = lambda n: functools.reduce(
-            lambda x, n: [x[0], x[0]+x[1]], range(n), [0, 1])[0]
         bounty = {
             "Winner": random.choices(
-                list(user_entries), list(user_entries.values()))[0],
+                list(user_entries),
+                list(user_entries.values()))[0],
             "Points": random.choices(
-                list(range(1, 11)), [1/fib(n) for n in range(1, 11)])[0]}
+                list(range(1, 11)),
+                [(1/2)**n for n in range(1, 11)])[0]}
         #Close bounty message
         embed = discord.Embed(title="Bounty Awarded", color=0x00ff00)
         embed.add_field(name="Winner", value=bounty["Winner"].name)
@@ -665,15 +652,13 @@ class Moderation(commands.Cog):
 '''
         #Get parameters
         parameters = self.data["Censor"]
-        blacklist = parameters["Blacklist"]
-        separators = parameters["Separators"]
-        excluded = parameters["Excluded"]
+        blacklist, separators, excluded = list(parameters.values())
         #Check if any blacklisted word in message
         profane = False
         for word in blacklist:
             #Word separates by non-alphabetic characters
             regex_match_true = re.compile(
-                f"[{separators}]*".join(list(word)), re.IGNORECASE)
+                fr"[{separators}]*".join(list(word)), re.IGNORECASE)
             #Word stands alone in another word
             regex_match_none = re.compile(
                 fr"([{excluded}]+{word})|({word}[{excluded}]+)",re.IGNORECASE)

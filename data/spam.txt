@@ -1,0 +1,1 @@
+{"limit": 10, "interval": 15}
