@@ -36,9 +36,10 @@ class Utils(commands.Bot):
         #Call feature classes
         self.add_cog(ReactionRoles(self))
         self.add_cog(VoiceChannelControl(self, category="Game Lobbies"))
-        self.add_cog(Moderation(self, cmd=True, spam=True, censor=True))
+        self.add_cog(Moderation(self, commands=True, spam=True, censor=True))
         self.add_cog(GhostPing(self))
         self.add_cog(GuildPoints(self))
+        logging.info(self.cogs)
 
     async def on_ready(self):
         '''
@@ -78,12 +79,14 @@ class Utils(commands.Bot):
 
     async def on_message(self, message):
         logging.info("Message: %s", message)
-        #Ignore all bot messages
-        if message.author.bot:
-            return
-        cog = self.get_cog("Moderation")
-        if cog is None or not await cog.check_all(message):
-            await self.process_commands(message)
+        await self.process_commands(message)
+
+    async def check_commands(self, ctx):
+        moderation = self.get_cog("Moderation")
+        if not moderation.features["commands"]["active"]:
+            return True
+        flag = await moderation.commands(ctx)
+        return not flag
 
 class ReactionRoles(commands.Cog):
     ''' Grant member role when they react to message
@@ -228,7 +231,7 @@ class GuildPoints(commands.Cog):
         unit = unit.lower()[0]
         if unit == 'p':
             regex = self.point_regex
-        elif unit == 'p':
+        elif unit == 't':
             regex = self.ticket_regex
         else:
             await ctx.send("You can only give points or tickets")
@@ -464,7 +467,7 @@ class GhostPing(commands.Cog):
 '''
     def __init__(self, bot):
         self.bot = bot
-        filename = 'allowed_pings.txt'
+        filename = 'pings.txt'
         path = os.path.join('data', filename)
         with open(path) as file:
             self.data = json.load(file)
@@ -532,80 +535,71 @@ class GhostPing(commands.Cog):
 class Moderation(commands.Cog):
     ''' Parse messages with various features to moderate a text channel
 '''
-    def __init__(self, bot, *, cmd=False, spam=False, censor=False):
+    def __init__(self, bot, *, commands=False, spam=False, censor=False):
+        args = locals()
         self.bot = bot
-        filenames = {
-            "Command Restrictions": 'command_restrictions.txt',
-            "Spam Detection": 'spam_detection.txt',
-            "Censor": 'censor.txt'}
-        self.data = {
-            "Command Restrictions": cmd,
-            "Spam Detection": spam,
-            "Censor": censor}
-        self.functions = {
-            "Command Restrictions": self.command_restrictions,
-            "Spam Detection": self.spam_detection,
-            "Censor": self.censor}
-        for feat in filenames:
-            if not self.data[feat]:
+        self.features = {
+            "commands": {
+                "file": "commands.txt",
+                "active": args.get("commands"),
+                "func": self.commands},
+            "spam": {
+                "file": "spam.txt",
+                "active": args.get("spam"),
+                "func": self.spam_detection},
+            "censor": {
+                "file": "censor.txt",
+                "active": args.get("censor"),
+                "func": self.censor}
+            }
+        self.data = {}
+        for feat in self.features:
+            if not self.features[feat]["active"]:
                 continue
-            path = os.path.join('data', filenames[feat])
+            path = os.path.join('data', self.features[feat]["file"])
             with open(path) as file:
                 self.data[feat] = json.load(file)
 
-    async def check_all(self, message):
-        ''' Parse message with all enabled features
-'''
-        #Delete messages which are flagged with any enabled feature
-        flags = []
-        for feat in self.data:
-            if not self.data[feat]:
-                continue
-            func = self.functions.get(feat)
-            flags.append(await func(message))
-        if any(flags):
-            await message.delete()
-            return True
-        return False
-
-    async def command_restrictions(self, message):
+    async def commands(self, ctx):
         ''' Flag command used by members inproperly
             - Commands used outside of allowed channel(s)
             - Commands used without necessary roles
 '''
-        #Get parameters
-        if not self.bot.command_prefix in message.content:
-            return False
-        command = message.content.split()[0].strip(self.bot.command_prefix)
-        parameters = self.data["Command Restrictions"].get(command)
+        #Get information
+        command = ctx.command
+        if command.name not in self.data["commands"]:
+            return
+        parameters = self.data["commands"].get(command.name)
         if parameters is None:
             return False
         restricted = False
         #Verify command used in correct channel
         channels = parameters['channels']
-        if channels and message.channel.id not in channels:
+        if channels and ctx.channel.id not in channels:
             restricted = True
         #Verify member using command has necessary roles
         roles = parameters['roles']
-        if roles and not any(r.id in roles for r in message.author.roles):
+        if roles and not any(r.id in roles for r in ctx.author.roles):
             restricted = True
         if not restricted:
             return False
         channel_names = [
-            discord.utils.get(message.guild.channels, id=c).name\
+            discord.utils.get(ctx.guild.channels, id=c).name\
             for c in channels]
         role_names = [
-            discord.utils.get(message.guild.roles, id=r).name\
+            discord.utils.get(ctx.guild.roles, id=r).name\
             for r in roles]
         embed = discord.Embed(
             title="Command Used Improperly", color=0x00ff00)
         fields = {
-            "Command Name": f"`{command}`",
-            "Allowed Channels": '-\n'.join(channel_names),
-            "Required Roles": '-\n'.join(role_names)}
+            "Command Name": f"`{command.name}`",
+            "Allowed Channels": ', '.join(channel_names),
+            "Required Roles": ', '.join(role_names)}
         for field in fields:
+            if not fields[field]:
+                break
             embed.add_field(name=field, value=fields[field])
-        await message.channel.send(embed=embed)
+        await ctx.send(embed=embed)
         return True
 
     async def spam_detection(self, message):
@@ -717,6 +711,8 @@ class VoiceChannelControl(commands.Cog):
             Member cannot have an active claim request
             Member cannot have a claim on another voice channel
 '''
+        if not await self.bot.check_commands(ctx):
+            return
         if ctx.author.id in self.claim_requests:
             await ctx.send("You already have an active claim request")
             return
