@@ -39,7 +39,6 @@ class Utils(commands.Bot):
         self.add_cog(Moderation(self, commands=True, spam=True, censor=True))
         self.add_cog(GhostPing(self))
         self.add_cog(GuildPoints(self))
-        logging.info(self.cogs)
 
     async def on_ready(self):
         '''
@@ -160,7 +159,7 @@ class GuildPoints(commands.Cog):
     async def on_raw_reaction_add(self, payload):
         if payload.member.bot:
             return
-        if payload.emoji.name == u"\u274c":
+        if payload.emoji.name == u"\u274e":
             await self.widthdraw_entry(payload)
         elif payload.emoji.name in self.bounty_reactions:
             await self.enter_bounty(payload)
@@ -375,7 +374,7 @@ class GuildPoints(commands.Cog):
         #Add reactions for members to enter
         for emoji in self.bounty_reactions:
             await message.add_reaction(emoji)
-        message.add_reaction(u"\u274c")
+        message.add_reaction(u"\u274e")
         #Update the countdown until the bounty has ended
         while (end-datetime.datetime.now()).total_seconds() > 0:
             continue
