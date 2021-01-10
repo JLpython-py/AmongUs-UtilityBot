@@ -1,1 +1,1 @@
-{"claim": {"channels": [791751630328561664], "roles": []}, "give": {"channels": [], "roles: [773750848223576075]}}
+{"claim": {"channels": [791751630328561664], "roles": []}, "points": {"channels": [], "roles": []}, "tickets": {"tickets": [], "roles": []}, "give": {"channels": [], "roles: [773750848223576075]}}
