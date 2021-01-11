@@ -26,6 +26,21 @@ class TestUtils(unittest.TestCase):
             self.assertTrue(
                 os.path.exists(os.path.join('data', file)))
 
+class TestWelcomeMessage(unittest.TestCase):
+
+    def open_file(self):
+        path = os.path.join('data', 'welcome.txt')
+        with open(path) as file:
+            data = json.load(file)
+        return data
+
+    def test_file_format(self):
+        data = self.open_file()
+        self.assertEqual(list(data), ['private', 'public', 'fields'])
+        self.assertTrue(isinstance(data['private'], bool))
+        self.assertTrue(isinstance(data['public'], bool))
+        self.assertTrue(isinstance(data['fields'], dict))
+
 class TestReactionRolesCog(unittest.TestCase):
 
     def open_messages_file(self):
@@ -45,14 +60,14 @@ class TestReactionRolesCog(unittest.TestCase):
 
 class TestGuildPointsCog(unittest.TestCase):
 
-    def open_tiers_file(self):
+    def open_file(self):
         path = os.path.join('data', 'tiers.txt')
         with open(path) as file:
             data = {int(k):int(v) for k, v in json.load(file).items()}
         return data
 
-    def test_tiers_file_format(self):
-        data = self.open_tiers_file()
+    def test_file_format(self):
+        data = self.open_file()
         for pts in data:
             self.assertTrue(isinstance(pts, int))
             self.assertTrue(isinstance(data[pts], int))
@@ -77,14 +92,14 @@ class TestGuildPointsCog(unittest.TestCase):
 
 class TestGhostPingCog(unittest.TestCase):
 
-    def open_pings_file(self):
+    def open_file(self):
         path = os.path.join('data', 'pings.txt')
         with open(path) as file:
             data = json.load(file)
         return data
 
-    def test_pings_file_format(self):
-        data = self.open_pings_file()
+    def test_file_format(self):
+        data = self.open_file()
         self.assertEqual(list(data), ["everyone", "roles", "members"])
         for group in data:
             self.assertTrue(isinstance(data[group], bool))

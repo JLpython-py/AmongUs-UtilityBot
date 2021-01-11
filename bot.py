@@ -39,43 +39,13 @@ class Utils(commands.Bot):
         self.add_cog(Moderation(self, commands=True, spam=True, censor=True))
         self.add_cog(GhostPing(self))
         self.add_cog(GuildPoints(self))
-        logging.info(self.cogs)
+        self.add_cog(WelcomeMessage(self))
 
     async def on_ready(self):
-        '''
-'''
         logging.info("Ready: %s", self.name)
 
     async def on_member_join(self, member):
-        '''
-'''
         logging.info("Member Join: %s", member)
-        if member.bot:
-            return
-        direct_message = await member.create_dm()
-        embed = discord.Embed(
-            title=f"Welcome {member.name}, to the Among Us Discord server",
-            color=0xff0000)
-        fields = {
-            "Gain Access": "\n".join([
-                "To gain full access to the server, read the rules in #rules",
-                "Then, react to the message to be granted the 'Member' role",
-                "You will have general access to the server with that role"]),
-            "Bots": "\n".join([
-                "In this server, there are three different classes of bots",
-                "They are Moderator Bots, Utility Bots, and Map Bots",
-                "The corresponding bots for each class are listed below:",
-                "- MEE6 (!)",
-                "- Utils (*)",
-                "- Mira HQ (MiraHQ.), Polus (Polus.), The Skeld (TheSkeld.)"]),
-            "Questions?": "\n".join([
-                "Channel information can be found in #channel-descriptions",
-                "Bot help can be found using the 'help' command for each bot",
-                "If you still have questions, try asking others in the server",
-                "You can always ask someone with the 'Moderator' role too"])}
-        for field in fields:
-            embed.add_field(name=field, value=fields[field])
-        await direct_message.send(embed=embed)
 
     async def on_message(self, message):
         logging.info("Message: %s", message)
@@ -88,6 +58,39 @@ class Utils(commands.Bot):
         flag = await moderation.commands(ctx)
         return not flag
 
+class WelcomeMessage(commands.Cog):
+    ''' Send a message when a new member joins the guild
+'''
+    def __init__(self, bot):
+        self.bot = bot
+        welcome = 'welcome.txt'
+        path = os.path.join('data', welcome)
+        with open(path) as file:
+            self.welcome = json.load(file)
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        if self.welcome['private']:
+            await self.private_welcome(member)
+        elif self.welcome['public']:
+            await self.public_welcome(member)
+
+    async def private_wlecome(self, member):
+        ''' Send a private message to the new member
+'''
+        direct_message = await member.create_dm()
+        embed = discord.Embed(
+            title=f"Welcome, {member.name}, to {member.guild.name}",
+            color=0xff0000)
+        for field in self.welcome['fields']:
+            embed.add_field(name=field, value=self.welcome['fields'][field])
+        await direct_message.send(embed=embed)
+
+    async def public_welcome(self, message):
+        ''' Send an announcement message to the specified channel
+'''
+        pass
+        
 class ReactionRoles(commands.Cog):
     ''' Grant member role when they react to message
 '''
@@ -160,7 +163,7 @@ class GuildPoints(commands.Cog):
     async def on_raw_reaction_add(self, payload):
         if payload.member.bot:
             return
-        if payload.emoji.name == u"\u274c":
+        if payload.emoji.name == u"\u274e":
             await self.widthdraw_entry(payload)
         elif payload.emoji.name in self.bounty_reactions:
             await self.enter_bounty(payload)
@@ -375,7 +378,7 @@ class GuildPoints(commands.Cog):
         #Add reactions for members to enter
         for emoji in self.bounty_reactions:
             await message.add_reaction(emoji)
-        message.add_reaction(u"\u274c")
+        message.add_reaction(u"\u274e")
         #Update the countdown until the bounty has ended
         while (end-datetime.datetime.now()).total_seconds() > 0:
             continue
