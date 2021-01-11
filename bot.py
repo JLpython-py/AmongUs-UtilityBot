@@ -252,7 +252,7 @@ class GuildPoints(commands.Cog):
         names = [f"_{currency}: {units}_",
                  f"_{currency}: {new_units}_"]
         await self.guild_currency(member, names)
-        if unit == 'points':
+        if unit == 'p':
             await self.parse_tiers(member, [units, new_units])
 
     async def award_tickets(self, message):
