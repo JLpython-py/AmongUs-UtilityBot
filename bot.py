@@ -189,7 +189,7 @@ class GuildPoints(commands.Cog):
             tiers[1] = '---'
             diff = '---'
         #Send point and tier information
-        role = discord.utils.get(ctx.guild.roles, name=tiers[1])
+        role = discord.utils.get(ctx.guild.roles, name=tiers[0])
         color = 0x00ff00 if role is None else role.color
         fields = {
             "Points": points, "Current Tier": tiers[0],
