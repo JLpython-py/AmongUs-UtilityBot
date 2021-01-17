@@ -12,7 +12,7 @@ class TestMain(unittest.TestCase):
 
     def test_token(self):
         environ_token = os.environ.get("token", None)
-        with open(os.path.join('data', 'token.txt')) as file:
+        with open('token.txt') as file:
             file_token = file.read()
         self.assertTrue(environ_token or file_token)
 
@@ -20,42 +20,34 @@ class TestUtils(unittest.TestCase):
 
     def test_cog_files_exist(self):
         filenames = [
-            'messages.txt', 'tiers.txt', 'pings.txt', 'commands.txt',
-            'spam.txt', 'censor.txt']
+            'ghost_ping.txt', 'guild_points.txt', 'moderation.txt',
+            'reaction_roles.txt', 'voice_channel_control.txt']
         for file in filenames:
             self.assertTrue(
                 os.path.exists(os.path.join('data', file)))
 
-class TestReactionRolesCog(unittest.TestCase):
+class TestGhostPingCog(unittest.TestCase):
 
-    def open_messages_file(self):
-        path = os.path.join('data', 'messages.txt')
-        with open(path) as file:
-            data = {int(k):v for k, v in json.load(file).items()}
-        return data
+    def open_pings_file(self):
+        with open(os.path.join('data', 'ghost_ping.txt')) as file:
+            return json.load(file)
 
-    def test_messages_file_format(self):
-        data = self.open_messages_file()
-        for msgid in data:
-            self.assertTrue(isinstance(msgid, int))
-            for emoji in data[msgid]:
-                self.assertTrue(isinstance(data[msgid][emoji], list))
-                for roleid in data[msgid][emoji]:
-                    self.assertTrue(isinstance(roleid, int))
+    def test_pings_file_format(self):
+        data = self.open_pings_file()
+        self.assertEqual(list(data), ["everyone", "roles", "members"])
+        self.assertTrue(
+            all([isinstance(data[i], bool) for i in data]))
 
 class TestGuildPointsCog(unittest.TestCase):
 
     def open_tiers_file(self):
-        path = os.path.join('data', 'tiers.txt')
-        with open(path) as file:
-            data = {int(k):int(v) for k, v in json.load(file).items()}
-        return data
+        with open(os.path.join('data', 'guild_points.txt')) as file:
+            return {int(k):int(v) for k, v in json.load(file).items()}
 
     def test_tiers_file_format(self):
         data = self.open_tiers_file()
-        for pts in data:
-            self.assertTrue(isinstance(pts, int))
-            self.assertTrue(isinstance(data[pts], int))
+        self.assertTrue(all([isinstance(i, int) for i in data]))
+        self.assertTrue(all([isinstance(data[i], int) for i in data]))
 
     def test_reaction_unicodes(self):
         reactions = {
@@ -75,69 +67,65 @@ class TestGuildPointsCog(unittest.TestCase):
         for step in range(upper-2):
             self.assertEqual(nums[step]*1/2, nums[step+1])
 
-class TestGhostPingCog(unittest.TestCase):
-
-    def open_pings_file(self):
-        path = os.path.join('data', 'pings.txt')
-        with open(path) as file:
-            data = json.load(file)
-        return data
-
-    def test_pings_file_format(self):
-        data = self.open_pings_file()
-        self.assertEqual(list(data), ["everyone", "roles", "members"])
-        for group in data:
-            self.assertTrue(isinstance(data[group], bool))
-
 class TestModerationCog(unittest.TestCase):
 
-    def open_commands_file(self):
-        path = os.path.join('data', 'commands.txt')
-        with open(path) as file:
-            data = json.load(file)
-        return data
+    def open_file(self):
+        with open(os.path.join('data', 'moderation.txt')) as file:
+            return json.load(file)
 
-    def open_spam_file(self):
-        path = os.path.join('data', 'spam.txt')
-        with open(path) as file:
-            data = json.load(file)
-        return data
+    def test_file_format(self):
+        data = self.open_file()
+        self.assertEqual(
+            list(data),
+            ["actives", "blacklist", "characters", "spam", "commands"])
 
-    def open_censor_file(self):
-        path = os.path.join('data', 'censor.txt')
-        with open(path) as file:
-            data = json.load(file)
-        return data
+    def test_actives(self):
+        data = self.open_file()["actives"]
+        self.assertTrue(isinstance(data, dict))
+        self.assertEqual(list(data), ["commands", "spam", "censor"])
+        self.assertTrue(
+            all([isinstance(i, bool) for i in data.values()]))
 
-    def test_commands_file_format(self):
-        data = self.open_commands_file()
-        for cmd in data:
-            self.assertTrue(isinstance(data[cmd], dict))
-            self.assertEqual(list(data[cmd]), ["channels", "roles"])
-            for key in data[cmd]:
-                self.assertTrue(isinstance(data[cmd][key], list))
-                for item in data[cmd][key]:
-                    self.assertTrue(isinstance(item, int))
+    def test_blacklist(self):
+        data = self.open_file()["blacklist"]
+        self.assertTrue(isinstance(data, list))
+        self.assertTrue(
+            all([isinstance(i, str) for i in data]))
 
-    def test_spam_file_format(self):
-        data = self.open_spam_file()
-        self.assertEqual(list(data), ["limit", "interval"])
-        for param in data:
-            self.assertTrue(isinstance(data[param], int))
+    def test_characters(self):
+        data = self.open_file()["characters"]
+        self.assertTrue(isinstance(data, list))
+        self.assertTrue(
+            all([isinstance(i, str) for i in data]))
 
-    def test_censor_file_format(self):
-        data = self.open_censor_file()
-        self.assertEqual(list(data), ["blacklist", "separators", "excluded"])
-        self.assertTrue(isinstance(data["blacklist"], list))
-        self.assertTrue(isinstance(data["separators"], str))
-        self.assertTrue(isinstance(data["excluded"], str))
+    def test_spam(self):
+        data = self.open_file()["spam"]
+        self.assertTrue(isinstance(data, list))
+        self.assertTrue(
+            all([isinstance(i, int) for i in data]))
+
+    def test_commands(self):
+        data = self.open_file()["commands"]
+        self.assertTrue(isinstance(data, dict))
+        self.assertTrue(
+            all([isinstance(i, str) for i in data]))
+        self.assertTrue(
+            all([isinstance(data[i], dict) for i in data]))
+        self.assertTrue(
+            all([isinstance(j, str)
+                 for i in data for j in data[i]]))
+        self.assertTrue(
+            all([isinstance(data[i][j], list)
+                 for i in data for j in data[i]]))
+        self.assertTrue(
+            all([isinstance(k, int)
+                 for i in data for j in data[i] for k in data[i][j]]))
 
     def test_censor_regular_expression(self):
-        data = self.open_censor_file()
-        separators, excluded = data["separators"], data["excluded"]
+        included, excluded = self.open_file()["characters"]
         word = "badword"
         regex_match_true = re.compile(
-            fr"[{separators}]*".join(list(word)), re.IGNORECASE)
+            fr"[{included}]*".join(list(word)), re.IGNORECASE)
         regex_match_none = re.compile(
             fr"([{excluded}]+{word})|({word}[{excluded}]+)", re.IGNORECASE)
         cases = {
@@ -150,8 +138,34 @@ class TestModerationCog(unittest.TestCase):
             profane = match_true and match_none is None
             self.assertEqual(cases[case], profane)
 
+class TestReactionRolesCog(unittest.TestCase):
+
+    def open_messages_file(self):
+        with open(os.path.join('data', 'reaction_roles.txt')) as file:
+            return {int(k):v for k, v in json.load(file).items()}
+
+    def test_file_format(self):
+        data = self.open_messages_file()
+        self.assertTrue(
+            all([isinstance(i, int) for i in data]))
+        self.assertTrue(
+            all([isinstance(data[i][j], list)
+                 for i in data for j in data[i]]))
+        self.assertTrue(
+            all([isinstance(k, int)
+                 for i in data for j in data[i] for k in data[i][j]]))
+
 class TestVoiceChannelControlCog(unittest.TestCase):
 
+    def open_file(self):
+        with open(os.path.join('data', 'voice_channel_control.txt')) as file:
+            return json.load(file)
+
+    def test_file_format(self):
+        data = self.open_file()
+        self.assertEqual(list(data), ['category'])
+        self.assertTrue(isinstance(data['category'], int))
+            
     def test_reaction_unicodes(self):
         reactions = {
             u'\u274c': '❌', "\U0001f507": '🔇', "\U0001f508": '🔈', 
