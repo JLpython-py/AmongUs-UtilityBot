@@ -26,42 +26,22 @@ class TestUtils(unittest.TestCase):
             self.assertTrue(
                 os.path.exists(os.path.join('data', file)))
 
-<<<<<<< HEAD
-class TestWelcomeMessage(unittest.TestCase):
+class TestGhostPingCog(unittest.TestCase):
 
     def open_file(self):
-        path = os.path.join('data', 'welcome.txt')
-        with open(path) as file:
-            data = json.load(file)
-        return data
-
-    def test_file_format(self):
-        data = self.open_file()
-        self.assertEqual(list(data), ['private', 'public', 'fields'])
-        self.assertTrue(isinstance(data['private'], bool))
-        self.assertTrue(isinstance(data['public'], bool))
-        self.assertTrue(isinstance(data['fields'], dict))
-
-class TestReactionRolesCog(unittest.TestCase):
-=======
-class TestGhostPingCog(unittest.TestCase):
->>>>>>> 88b755197e9664d65ac29dd74d5d63e30d187191
-
-    def open_pings_file(self):
         with open(os.path.join('data', 'ghost_ping.txt')) as file:
             return json.load(file)
 
     def test_pings_file_format(self):
-        data = self.open_pings_file()
+        data = self.open_file()
         self.assertEqual(list(data), ["everyone", "roles", "members"])
         self.assertTrue(
             all([isinstance(data[i], bool) for i in data]))
 
 class TestGuildPointsCog(unittest.TestCase):
 
-<<<<<<< HEAD
     def open_file(self):
-        path = os.path.join('data', 'tiers.txt')
+        path = os.path.join('data', 'guild_points.txt')
         with open(path) as file:
             data = {int(k):int(v) for k, v in json.load(file).items()}
         return data
@@ -71,16 +51,6 @@ class TestGuildPointsCog(unittest.TestCase):
         for pts in data:
             self.assertTrue(isinstance(pts, int))
             self.assertTrue(isinstance(data[pts], int))
-=======
-    def open_tiers_file(self):
-        with open(os.path.join('data', 'guild_points.txt')) as file:
-            return {int(k):int(v) for k, v in json.load(file).items()}
-
-    def test_tiers_file_format(self):
-        data = self.open_tiers_file()
-        self.assertTrue(all([isinstance(i, int) for i in data]))
-        self.assertTrue(all([isinstance(data[i], int) for i in data]))
->>>>>>> 88b755197e9664d65ac29dd74d5d63e30d187191
 
     def test_reaction_unicodes(self):
         reactions = {
@@ -100,23 +70,6 @@ class TestGuildPointsCog(unittest.TestCase):
         for step in range(upper-2):
             self.assertEqual(nums[step]*1/2, nums[step+1])
 
-<<<<<<< HEAD
-class TestGhostPingCog(unittest.TestCase):
-
-    def open_file(self):
-        path = os.path.join('data', 'pings.txt')
-        with open(path) as file:
-            data = json.load(file)
-        return data
-
-    def test_file_format(self):
-        data = self.open_file()
-        self.assertEqual(list(data), ["everyone", "roles", "members"])
-        for group in data:
-            self.assertTrue(isinstance(data[group], bool))
-
-=======
->>>>>>> 88b755197e9664d65ac29dd74d5d63e30d187191
 class TestModerationCog(unittest.TestCase):
 
     def open_file(self):
@@ -222,6 +175,31 @@ class TestVoiceChannelControlCog(unittest.TestCase):
             "\U0001f3f3": '🏳'}
         for uni in reactions:
             self.assertEqual(uni, reactions[uni])
+
+class TestWelcomeMessageCog(unittest.TestCase):
+
+    def open_file(self):
+        with open(os.path.join('data', 'welcome_message.txt')) as file:
+            return json.load(file)
+
+    def test_file_format(self):
+        data = self.open_file()
+        self.assertEqual(list(data), ['private', 'public'])
+        self.assertTrue(
+            all([isinstance(data[i], dict) for i in data]))
+        self.assertTrue(
+            all([isinstance(data[i]['active'], bool) for i in data]))
+        self.assertTrue(
+            all([isinstance(data[i]['title'], str) for i in data]))
+        self.assertTrue(
+            all([isinstance(data[i]['fields'], dict) for i in data]))
+        self.assertTrue(isinstance(data['public']['channel'], int))
+        self.assertTrue(
+            all([isinstance(j, str)
+                 for i in data for j in data[i]['fields']]))
+        self.assertTrue(
+            all([isinstance(data[i]['fields'][j], str)
+                 for i in data for j in data[i]['fields']]))
 
 if __name__ == '__main__':
     unittest.main()
