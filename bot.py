@@ -77,11 +77,25 @@ class Utils(commands.Bot):
 
     async def on_message(self, message):
         logging.info("Message: %s", message)
+        if message.author.bot:
+            return
+        if await self.check_message(message):
+            await message.delete()
+            return
         await self.process_commands(message)
 
+    async def check_message(self, message):
+        moderations = self.get_cog("Moderation")
+        if moderations.data["actives"]["spam"]:
+            sflag = await moderations.spam(message)
+        if moderations.data["actives"]["commands"]:
+            cflag = await moderations.censor(message)
+        logging.info((sflag, cflag))
+        return (sflag or cflag)
+        
     async def check_commands(self, ctx):
         moderation = self.get_cog("Moderation")
-        if not moderation.features["commands"]["active"]:
+        if not moderation.data["actives"]["commands"]:
             return True
         flag = await moderation.commands(ctx)
         return not flag
@@ -91,11 +105,8 @@ class GhostPing(commands.Cog):
 '''
     def __init__(self, bot):
         self.bot = bot
-        filename = 'ghost_ping.txt'
-        path = os.path.join('data', filename)
-        with open(path) as file:
+        with open(os.path.join('data', 'ghost_ping.txt')) as file:
             self.data = json.load(file)
-        self.fields = {}
 
     @commands.Cog.listener()
     async def on_message_delete(self, message):
@@ -106,54 +117,35 @@ class GhostPing(commands.Cog):
         ''' Check all disallowed categories if the message mentions it
 '''
         pinged = []
-        self.fields["User"] = message.author.name
-        self.fields["Channel"] = message.channel.name
-        self.fields["Message"] = message.content
-        if not self.data["everyone"]:
-            pinged.append(self.everyone_pings(message))
-        if not self.data["roles"]:
-            pinged.append(self.role_pings(message))
-        if not self.data["members"]:
-            pinged.append(self.member_pings(message))
+        fields = {
+            "User": message.author.name, "Channel": message.channel.name,
+            "Message": message.content}
+        if self.data["everyone"]:
+            if message.mention_everyone:
+                fields["Message @everyone"] = "Yes"
+            pinged.append(bool(message.mention_everyone))
+        if self.data["roles"]:
+            if message.raw_role_mentions:
+                fields["Role Mentions"] = ', '.join([
+                    discord.utils.get(message.guild.roles, id=i).name\
+                    for i in message.raw_role_mentions])
+            pinged.append(bool(message.raw_role_mentions))
+        if self.data["members"]:
+            if message.raw_mentions:
+                fields["Member Mentions"] = ', '.join(
+                    [discord.utils.get(message.guild.members, id=i).name\
+                     for i in message.raw_mentions])
+            pinged.append(bool(message.raw_mentions))
         if not any(pinged):
-            self.fields = {}
             return False
         embed = discord.Embed(
             title="Ghost Ping Detected :no_entry_sign::ghost:",
             color=0xff0000)
-        for field in self.fields:
-            embed.add_field(name=field, value=self.fields[field])
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
         embed.set_footer(
             text=f"Detected At: {datetime.datetime.now().strftime('%D %T')}")
         await message.channel.send(embed=embed)
-        return True
-
-    def everyone_pings(self, message):
-        ''' Check if message mentions everyone
-'''
-        if not message.mention_everyone:
-            return False
-        self.fields["Mentions @everyone"] = "Yes"
-        return True
-
-    def role_pings(self, message):
-        ''' Check if message mentions any roles
-'''
-        if not message.raw_role_mentions:
-            return False
-        roles = [discord.utils.get(message.guild.roles, id=i).name\
-                 for i in message.raw_role_mentions]
-        self.fields["Role Mentions"] = ', '.join(roles)
-        return True
-
-    def member_pings(self, message):
-        ''' Check if message mentions any members
-'''
-        if not message.raw_mentions:
-            return False
-        members = [discord.utils.get(message.guild.members, id=i).name\
-                   for i in message.raw_mentions]
-        self.fields["Member Mentions"] = ', '.join(members)
         return True
 
 class GuildPoints(commands.Cog):
@@ -161,9 +153,7 @@ class GuildPoints(commands.Cog):
 '''
     def __init__(self, bot, *, channel="general"):
         self.bot = bot
-        tiers = 'guild_points.txt'
-        path = os.path.join('data', tiers)
-        with open(path) as file:
+        with open(os.path.join('data', 'guild_points.txt')) as file:
             self.tiers = {int(k):int(v) for k, v in json.load(file).items()}
         self.point_regex = re.compile(r'_Guild Points: ([0-9]+)_')
         self.ticket_regex = re.compile(r'_Bounty Tickets: ([0-9]+)_')
@@ -486,8 +476,7 @@ class Moderation(commands.Cog):
 '''
     def __init__(self, bot):
         self.bot = bot
-        self.file = 'moderation.txt'
-        with open('data\\moderation.txt') as file:
+        with open(os.path.join('data', 'moderation.txt')) as file:
             self.data = json.load(file)
 
     async def commands(self, ctx):
@@ -496,10 +485,7 @@ class Moderation(commands.Cog):
             - Commands used without necessary roles
 '''
         #Get information
-        command = ctx.command
-        if command.name not in self.data["commands"]:
-            return
-        parameters = self.data["commands"].get(command.name)
+        parameters = self.data["commands"].get(ctx.command.name)
         if parameters is None:
             return False
         restricted = False
@@ -522,7 +508,7 @@ class Moderation(commands.Cog):
         embed = discord.Embed(
             title="Command Used Improperly", color=0x00ff00)
         fields = {
-            "Command Name": f"`{command.name}`",
+            "Command Name": f"`{ctx.command.name}`",
             "Allowed Channels": ', '.join(channel_names),
             "Required Roles": ', '.join(role_names)}
         for field in fields:
@@ -532,7 +518,7 @@ class Moderation(commands.Cog):
         await ctx.send(embed=embed)
         return True
 
-    async def spam_detection(self, message):
+    async def spam(self, message):
         ''' Flag member if they send too many messages too quickly
 '''
         #Get parameters and initial conditions
@@ -607,9 +593,7 @@ class ReactionRoles(commands.Cog):
 '''
     def __init__(self, bot):
         self.bot = bot
-        messages = 'reaction_roles.txt'
-        path = os.path.join('data', messages)
-        with open(path) as file:
+        with open(os.path.join('data', 'reaction_roles.txt')) as file:
             self.messages = {int(k):v for k, v in json.load(file).items()}
 
     @commands.Cog.listener()
