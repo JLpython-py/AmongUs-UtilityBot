@@ -1,0 +1,1 @@
+{"public": {"active": true, "title": "Welcome to the Among Us Discord server", "fields": {"Gain Access": "To gain access to the server, read the rules in #rules and react using :white_check_mark:. Once doing so, you will be granted the 'Member' role and you will have general access to the server."}}, "private": {"active": false, "channel": null, "title": null, "fields": null}}
