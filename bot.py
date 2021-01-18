@@ -41,12 +41,18 @@ class Utils(commands.Bot):
         self.add_cog(WelcomeMessage(self))
 
     async def on_ready(self):
+        '''
+'''
         logging.info("Ready: %s", self.name)
 
     async def on_member_join(self, member):
+        '''
+'''
         logging.info("Member Join: %s", member)
 
     async def on_message(self, message):
+        '''
+'''
         logging.info("Message: %s", message)
         if message.author.bot:
             return
@@ -56,6 +62,8 @@ class Utils(commands.Bot):
         await self.process_commands(message)
 
     async def check_message(self, message):
+        ''' Run message through spam and censor moderation functions
+'''
         moderations = self.get_cog("Moderation")
         if moderations.data["actives"]["spam"]:
             sflag = await moderations.spam(message)
@@ -65,6 +73,8 @@ class Utils(commands.Bot):
         return (sflag or cflag)
         
     async def check_commands(self, ctx):
+        ''' Run command through command moderation function
+'''
         moderation = self.get_cog("Moderation")
         if not moderation.data["actives"]["commands"]:
             return True
@@ -807,6 +817,50 @@ class VoiceChannelControl(commands.Cog):
             if member.id in self.claim_requests:
                 await new_member.edit(mute=member.voice.mute)
 
+class WelcomeMessage(commands.Cog):
+    ''' Send a private and/or public welcome message when member joins
+'''
+    def __init__(self, bot):
+        self.bot = bot
+        with open(os.path.join('data', 'welcome_message.txt')) as file:
+            self.data = json.load(file)
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        if member.bot:
+            return
+        await self.private_message(member)
+        await self.public_message(member)
+
+    async def private_message(self, member):
+        ''' Send private message embed in direct message channel
+'''
+        if not self.data["private"]["active"]:
+            return
+        direct_message = await member.create_dm()
+        embed = discord.Embed(
+            title=self.data["private"]["title"],
+            color=0xff0000)
+        fields = self.data["private"]["fields"]
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        await direct_message.send(embed=embed)
+
+    async def public_message(self, member):
+        ''' Send public message embed in determined channel
+'''
+        if not self.data["public"]["active"]:
+            return
+        channel = discord.utils.get(
+            member.guild.channels, id=self.data["public"]["channel"])
+        embed = discord.Embed(
+            title=self.data["public"]["title"],
+            color=0xff0000)
+        fields = self.data["public"]["fields"]
+        for field in fields:
+            embed.add_field(name=field, value=fields[field])
+        await channel.send(embed=embed)
+        
 def main():
     token = os.environ.get("token", None)
     if token is None:
