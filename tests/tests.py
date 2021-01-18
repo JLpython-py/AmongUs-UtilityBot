@@ -28,26 +28,29 @@ class TestUtils(unittest.TestCase):
 
 class TestGhostPingCog(unittest.TestCase):
 
-    def open_pings_file(self):
+    def open_file(self):
         with open(os.path.join('data', 'ghost_ping.txt')) as file:
             return json.load(file)
 
     def test_pings_file_format(self):
-        data = self.open_pings_file()
+        data = self.open_file()
         self.assertEqual(list(data), ["everyone", "roles", "members"])
         self.assertTrue(
             all([isinstance(data[i], bool) for i in data]))
 
 class TestGuildPointsCog(unittest.TestCase):
 
-    def open_tiers_file(self):
-        with open(os.path.join('data', 'guild_points.txt')) as file:
-            return {int(k):int(v) for k, v in json.load(file).items()}
+    def open_file(self):
+        path = os.path.join('data', 'guild_points.txt')
+        with open(path) as file:
+            data = {int(k):int(v) for k, v in json.load(file).items()}
+        return data
 
-    def test_tiers_file_format(self):
-        data = self.open_tiers_file()
-        self.assertTrue(all([isinstance(i, int) for i in data]))
-        self.assertTrue(all([isinstance(data[i], int) for i in data]))
+    def test_file_format(self):
+        data = self.open_file()
+        for pts in data:
+            self.assertTrue(isinstance(pts, int))
+            self.assertTrue(isinstance(data[pts], int))
 
     def test_reaction_unicodes(self):
         reactions = {
@@ -172,6 +175,31 @@ class TestVoiceChannelControlCog(unittest.TestCase):
             "\U0001f3f3": '🏳'}
         for uni in reactions:
             self.assertEqual(uni, reactions[uni])
+
+class TestWelcomeMessageCog(unittest.TestCase):
+
+    def open_file(self):
+        with open(os.path.join('data', 'welcome_message.txt')) as file:
+            return json.load(file)
+
+    def test_file_format(self):
+        data = self.open_file()
+        self.assertEqual(list(data), ['private', 'public'])
+        self.assertTrue(
+            all([isinstance(data[i], dict) for i in data]))
+        self.assertTrue(
+            all([isinstance(data[i]['active'], bool) for i in data]))
+        self.assertTrue(
+            all([isinstance(data[i]['title'], str) for i in data]))
+        self.assertTrue(
+            all([isinstance(data[i]['fields'], dict) for i in data]))
+        self.assertTrue(isinstance(data['public']['channel'], int))
+        self.assertTrue(
+            all([isinstance(j, str)
+                 for i in data for j in data[i]['fields']]))
+        self.assertTrue(
+            all([isinstance(data[i]['fields'][j], str)
+                 for i in data for j in data[i]['fields']]))
 
 if __name__ == '__main__':
     unittest.main()
