@@ -63,23 +63,27 @@ class Utils(commands.Bot):
 
     async def check_message(self, message):
         ''' Run message through spam and censor moderation functions
+            Determine if message should be flagged
 '''
-        moderations = self.get_cog("Moderation")
-        if moderations.data["actives"]["spam"]:
-            sflag = await moderations.spam(message)
-        if moderations.data["actives"]["commands"]:
-            cflag = await moderations.censor(message)
-        logging.info((sflag, cflag))
-        return (sflag or cflag)
+        moderation = self.get_cog("Moderation")
+        flags = []
+        if moderation is not None:
+            if moderation.data["actives"]["spam"]:
+                flags.append(await moderations.spam(message))
+            if moderation.data["actives"]["commands"]:
+                flags.append(await moderations.censor(message))
+            return not any(flags)
+        return False
         
     async def check_commands(self, ctx):
         ''' Run command through command moderation function
+            Determine if message should be flagged
 '''
         moderation = self.get_cog("Moderation")
-        if not moderation.data["actives"]["commands"]:
-            return True
-        flag = await moderation.commands(ctx)
-        return not flag
+        if moderation is not None:
+            if moderation.data["actives"]["commands"]:
+                return await moderation.commands(ctx)
+        return False
 
 class GhostPing(commands.Cog):
     ''' Detect if a memeber ghost pings a role, member, or everyone
@@ -150,6 +154,11 @@ class GuildPoints(commands.Cog):
     async def on_raw_reaction_add(self, payload):
         if payload.member.bot:
             return
+        channel = self.bot.get_channel(payload.channel_id)
+        message = await channel.fetch_message(payload.message_id)
+        embed = message.embeds[0]
+        if embed.footer.text != "GuildPoints":
+            return
         if payload.emoji.name == u"\u274e":
             await self.widthdraw_entry(payload)
         elif payload.emoji.name in self.bounty_reactions:
@@ -159,6 +168,8 @@ class GuildPoints(commands.Cog):
     async def points(self, ctx):
         ''' Get number of Guild Points a member has
 '''
+        if await self.bot.check_commands(ctx):
+            return
         #Parse through members roles to get current points
         points = 0
         for role in ctx.message.author.roles:
@@ -198,6 +209,8 @@ class GuildPoints(commands.Cog):
     async def tickets(self, ctx):
         ''' Get number of Bounty Tickets a member has
 '''
+        if await self.bot.check_commands(ctx):
+            return
         #Parse through member roles to get current tickets
         tickets = 0
         for role in ctx.author.roles:
@@ -218,6 +231,8 @@ class GuildPoints(commands.Cog):
     async def give(self, ctx, unit, member, quantity):
         ''' Give Guild Points or Bounty Tickets to a member
 '''
+        if await self.bot.check_commands(ctx):
+            return
         unit = unit.lower()[0]
         if unit == 'p':
             regex = self.point_regex
@@ -360,6 +375,7 @@ class GuildPoints(commands.Cog):
             "Bounty End": end.strftime("%D %T")}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
+        embed.set_footer(text="GuildPoints")
         channel = discord.utils.get(message.guild.channels, name=self.channel)
         message = await channel.send(embed=embed)
         #Add reactions for members to enter
@@ -641,6 +657,11 @@ class VoiceChannelControl(commands.Cog):
         logging.info("Raw Reaction Add: %s", payload)
         if payload.member.bot:
             return
+        channel = self.bot.get_channel(payload.channel_id)
+        message = await channel.fetch_message(payload.message_id)
+        embed = message.embeds[0]
+        if embed.footer.text != "VoiceChannelControl":
+            return
         if payload.emoji.name in self.emojis:
             await self.claim_control_panel(payload)
         elif payload.emoji.name == u'\u274c':
@@ -656,7 +677,7 @@ class VoiceChannelControl(commands.Cog):
             Member cannot have an active claim request
             Member cannot have a claim on another voice channel
 '''
-        if not await self.bot.check_commands(ctx):
+        if await self.bot.check_commands(ctx):
             return
         if ctx.author.id in self.claim_requests:
             await ctx.send("You already have an active claim request")
@@ -672,7 +693,7 @@ class VoiceChannelControl(commands.Cog):
 '''
         #Get voice channels in category
         self.voice_channels = discord.utils.get(
-            ctx.guild.categories, name=self.data['category']).channels
+            ctx.guild.categories, id=self.data['category']).channels
         #Send claim request panel
         embed = discord.Embed(
             title="Voice Channel Claim", color=0x00ff00)
@@ -684,6 +705,7 @@ class VoiceChannelControl(commands.Cog):
             "Cancel": "React with :x: to cancel"}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
+        embed.set_footer(text="VoiceChannelControl")
         panel = await ctx.channel.send(embed=embed)
         self.claim_requests.setdefault(ctx.message.author.id, panel.id)
         #Add reactions to claim request panel
@@ -736,6 +758,7 @@ class VoiceChannelControl(commands.Cog):
                 "Yield - :flag_white:"])}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
+        embed.set_footer(text="VoiceChannelControl")
         await panel.edit(embed=embed)
         #Add voice control reactions
         await panel.clear_reactions()
