@@ -43,14 +43,18 @@ class TestGuildPointsCog(unittest.TestCase):
     def open_file(self):
         path = os.path.join('data', 'guild_points.txt')
         with open(path) as file:
-            data = {int(k):int(v) for k, v in json.load(file).items()}
+            data = json.load(file)
+        data['tiers'] = {
+            int(k):int(v) for k, v in data['tiers'].items()}
         return data
 
     def test_file_format(self):
         data = self.open_file()
-        for pts in data:
-            self.assertTrue(isinstance(pts, int))
-            self.assertTrue(isinstance(data[pts], int))
+        self.assertEqual(list(data), ["tiers", "bounty"])
+        self.assertTrue(all([isinstance(i, int) for i in data["tiers"]]))
+        self.assertTrue(
+            all([isinstance(data["tiers"][i], int) for i in data["tiers"]]))
+        self.assertTrue(isinstance(data["bounty"], int))
 
     def test_reaction_unicodes(self):
         reactions = {
