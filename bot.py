@@ -415,7 +415,7 @@ class GuildPoints(commands.Cog):
         #Randomly select a winner and the number of points won
         await message.clear_reactions()
         embed = discord.Embed(title="Bounty Awarded", color=0x00ff00)
-        if sum(list(self.bounties.values())) < 15
+        if sum(list(self.bounties.values())) < 15:
             embed.add_field(
                 name="No Winner", value="Not Enough Bounty Entries")
             await message.edit(embed=embed)
