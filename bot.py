@@ -35,7 +35,7 @@ class Utils(commands.Bot):
         #Call feature classes
         self.add_cog(GhostPing(self))
         self.add_cog(GuildPoints(self))
-        #self.add_cog(Moderation(self))
+        self.add_cog(Moderation(self))
         self.add_cog(ReactionRoles(self))
         self.add_cog(VoiceChannelControl(self))
         self.add_cog(WelcomeMessage(self))
@@ -57,10 +57,8 @@ class Utils(commands.Bot):
         if message.author.bot:
             return
         if await self.check_message(message):
-            logging.info("Flagged")
             await message.delete()
             return
-        logging.info("Not flagged")
         await self.process_commands(message)
 
     async def check_message(self, message):
