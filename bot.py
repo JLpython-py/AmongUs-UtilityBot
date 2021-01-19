@@ -69,10 +69,10 @@ class Utils(commands.Bot):
         flags = []
         if moderation is not None:
             if moderation.data["actives"]["spam"]:
-                flags.append(await moderations.spam(message))
+                flags.append(await moderation.spam(message))
             if moderation.data["actives"]["commands"]:
-                flags.append(await moderations.censor(message))
-            return not any(flags)
+                flags.append(await moderation.censor(message))
+            return any(flags)
         return False
         
     async def check_commands(self, ctx):
@@ -95,10 +95,10 @@ class GhostPing(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message_delete(self, message):
-        logging.info(message)
-        await self.check_all(message)
+        logging.info("Message Delete: %s", message)
+        await self.parse(message)
 
-    async def check_all(self, message):
+    async def parse(self, message):
         ''' Check all disallowed categories if the message mentions it
 '''
         pinged = []
@@ -156,12 +156,9 @@ class GuildPoints(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        logging.info(message.guild.channels)
+        if message.author.bot:
+            return
         members = [m for m in message.guild.members if not m.bot]
-        logging.info(members)
-        if message.content == 'test.activate_bounty':
-            await self.award_tickets(message)
-            await self.create_bounty(message)
         if message.author == random.choice(message.guild.members):
             await self.award_tickets(message)
             if message.channel == random.choice(message.guild.channels):
@@ -176,8 +173,8 @@ class GuildPoints(commands.Cog):
         embed = message.embeds[0]
         if embed.footer.text != "GuildPoints":
             return
-        if payload.emoji.name == u"\u274e":
-            await self.widthdraw_entry(payload)
+        if payload.emoji.name == u"\u274c":
+            await self.withdraw_entry(payload)
         elif payload.emoji.name in self.bounty_reactions:
             await self.enter_bounty(payload)
 
@@ -296,7 +293,6 @@ class GuildPoints(commands.Cog):
                  f"_Bounty Tickets: {new_tickets}_"]
         await self.guild_currency(message.author, names)
         #Notify member
-        logging.info(message.author.name)
         direct_message = await message.author.create_dm()
         embed = discord.Embed(
             title=f"Awarded {plus} Bounty Tickets", color=0x00ff00)
@@ -341,9 +337,7 @@ class GuildPoints(commands.Cog):
                  f"_Bounty Tickets: {new_tickets}_"]
         await self.guild_currency(payload.member, names)
         #Enter member in bounty and notify member
-        self.bounty_entries.setdefault(
-            payload.member.id,
-            self.bounty_reactions.index(payload.emoji.name))
+        self.bounty_entries.setdefault(payload.member.id, entries)
         embed = discord.Embed(
             title="Bounty Entry Successful", color=0x00ff00)
         embed.add_field(name="Entries", value=entries)
@@ -353,7 +347,7 @@ class GuildPoints(commands.Cog):
         embed.add_field(name="Tickets", value=new_tickets)
         await direct_message.send(embed=embed)
 
-    async def widthdraw_entry(self, payload):
+    async def withdraw_entry(self, payload):
         ''' Withdraw all entries in a Guild Points Bounty and refund tickets
 '''
         #Get information from payload
@@ -364,10 +358,11 @@ class GuildPoints(commands.Cog):
         entries = self.bounty_entries.get(payload.member.id)
         if entries is None:
             return
-        for rxn in message.reactions:
-            if rxn.name == self.bounty_reactions[entries-1]:
-                await message.remove_reaction(rxn.emoji, payload.member)
-        await message.remove_reaction(payload.emoji, payload.member)
+        await message.remove_reaction(
+            self.bounty_reactions[entries-1], payload.member)
+        await message.remove_reaction(
+            payload.emoji, payload.member)
+        del self.bounty_entries[payload.member.id]
         #Get number of tickets member has
         tickets = 0
         for role in payload.member.roles:
@@ -401,14 +396,17 @@ class GuildPoints(commands.Cog):
             embed.add_field(name=field, value=fields[field])
         embed.set_footer(text="GuildPoints")
         channel = discord.utils.get(message.guild.channels, name=self.channel)
-        message = await channel.send(embed=embed)
+        bounty = await channel.send(embed=embed)
         #Add reactions for members to enter
         for emoji in self.bounty_reactions:
-            await message.add_reaction(emoji)
-        await message.add_reaction(u"\u274c")
+            await bounty.add_reaction(emoji)
+        await bounty.add_reaction(u"\u274c")
         #Wait until the bounty has ended
-        await asyncio.sleep(60)
-        await self.award_bounty(message)
+        time_left = (end-datetime.datetime.now()).total_seconds()
+        while time_left > 0:
+            time_left = (end-datetime.datetime.now()).total_seconds()
+            await asyncio.sleep(1)
+        await self.award_bounty(bounty)
         self.active_bounty = False
 
     async def award_bounty(self, message):
@@ -419,7 +417,12 @@ class GuildPoints(commands.Cog):
         message = await channel.fetch_message(message.id)
         #Randomly select a winner and the number of points won
         await message.clear_reactions()
-        logging.info(self.bounty_entries)
+        embed = discord.Embed(title="Bounty Awarded", color=0x00ff00)
+        if sum(list(self.bounties.values())) < 15
+            embed.add_field(
+                name="No Winner", value="Not Enough Bounty Entries")
+            await message.edit(embed=embed)
+            return
         bounty = {
             "Winner": discord.utils.get(
                 message.guild.members,
@@ -429,8 +432,6 @@ class GuildPoints(commands.Cog):
             "Points": random.choices(
                 list(range(1, 11)),
                 [(1/2)**n for n in range(1, 11)])[0]}
-        #Close bounty message
-        embed = discord.Embed(title="Bounty Awarded", color=0x00ff00)
         embed.add_field(name="Winner", value=bounty["Winner"].name)
         embed.add_field(name="Points", value=bounty["Points"])
         await message.edit(embed=embed)
