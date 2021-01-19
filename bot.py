@@ -695,7 +695,7 @@ class VoiceChannelControl(commands.Cog):
 '''
         #Get voice channels in category
         self.voice_channels = discord.utils.get(
-            ctx.guild.categories, name=self.data['category']).channels
+            ctx.guild.categories, id=self.data['category']).channels
         #Send claim request panel
         embed = discord.Embed(
             title="Voice Channel Claim", color=0x00ff00)
@@ -760,7 +760,7 @@ class VoiceChannelControl(commands.Cog):
                 "Yield - :flag_white:"])}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
-        embed.add_footer(text="VoiceChannelControl")
+        embed.set_footer(text="VoiceChannelControl")
         await panel.edit(embed=embed)
         #Add voice control reactions
         await panel.clear_reactions()
