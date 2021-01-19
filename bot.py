@@ -151,7 +151,6 @@ class GuildPoints(commands.Cog):
             u"\u0035\ufe0f\u20e3", u"\u0036\ufe0f\u20e3",
             u"\u0037\ufe0f\u20e3", u"\u0038\ufe0f\u20e3",
             u"\u0039\ufe0f\u20e3"]
-        self.bounty_active = False
         self.bounty_entries = {}
 
     @commands.Cog.listener()
@@ -383,7 +382,6 @@ class GuildPoints(commands.Cog):
     async def create_bounty(self, message):
         ''' Create a Guild Point Bounty for members to enter in
 '''
-        self.active_bounty = True
         start = datetime.datetime.now()
         end = start+datetime.timedelta(minutes=1)
         embed = discord.Embed(title="New Bounty!", color=0x00ff00)
@@ -407,7 +405,6 @@ class GuildPoints(commands.Cog):
             time_left = (end-datetime.datetime.now()).total_seconds()
             await asyncio.sleep(1)
         await self.award_bounty(bounty)
-        self.active_bounty = False
 
     async def award_bounty(self, message):
         ''' Award a random number of Guild Points to a random member
