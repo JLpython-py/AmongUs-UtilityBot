@@ -69,7 +69,6 @@ class Utils(commands.Bot):
             sflag = await moderations.spam(message)
         if moderations.data["actives"]["commands"]:
             cflag = await moderations.censor(message)
-        logging.info((sflag, cflag))
         return (sflag or cflag)
         
     async def check_commands(self, ctx):
@@ -135,7 +134,9 @@ class GuildPoints(commands.Cog):
     def __init__(self, bot, *, channel="general"):
         self.bot = bot
         with open(os.path.join('data', 'guild_points.txt')) as file:
-            self.tiers = {int(k):int(v) for k, v in json.load(file).items()}
+            self.data = json.load(file)
+        self.data['tiers'] = {
+            int(k):int(v) for k, v in self.data['tiers'].items()}
         self.point_regex = re.compile(r'_Guild Points: ([0-9]+)_')
         self.ticket_regex = re.compile(r'_Bounty Tickets: ([0-9]+)_')
         self.channel = channel
@@ -145,6 +146,21 @@ class GuildPoints(commands.Cog):
             u"\u0035\ufe0f\u20e3", u"\u0036\ufe0f\u20e3",
             u"\u0037\ufe0f\u20e3", u"\u0038\ufe0f\u20e3",
             u"\u0039\ufe0f\u20e3"]
+        self.bounty_active = False
+        self.bounty_entries = {}
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        logging.info(message.guild.channels)
+        members = [m for m in message.guild.members if not m.bot]
+        logging.info(members)
+        if message.content == 'test.activate_bounty':
+            await self.award_tickets(message)
+            await self.create_bounty(message)
+        if message.author == random.choice(message.guild.members):
+            await self.award_tickets(message)
+            if message.channel == random.choice(message.guild.channels):
+                await self.create_bounty(message)
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
@@ -167,13 +183,13 @@ class GuildPoints(commands.Cog):
                 break
         #Get tier information from points
         tiers = ["---", "---"]
-        for pts in self.tiers:
+        for pts in self.data["tiers"]:
             if pts <= points:
                 tiers[0] = discord.utils.get(
-                    ctx.guild.roles, id=self.tiers[pts]).name
+                    ctx.guild.roles, id=self.data["tiers"][pts]).name
             elif pts > points:
                 tiers[1] = discord.utils.get(
-                    ctx.guild.roles, id=self.tiers[pts]).name
+                    ctx.guild.roles, id=self.data["tiers"][pts]).name
                 diff = pts-points
                 break
         if points >= 100:
@@ -264,6 +280,7 @@ class GuildPoints(commands.Cog):
                  f"_Bounty Tickets: {new_tickets}_"]
         await self.guild_currency(message.author, names)
         #Notify member
+        logging.info(message.author.name)
         direct_message = await message.author.create_dm()
         embed = discord.Embed(
             title=f"Awarded {plus} Bounty Tickets", color=0x00ff00)
@@ -278,7 +295,7 @@ class GuildPoints(commands.Cog):
         message = await channel.fetch_message(payload.message_id)
         direct_message = await payload.member.create_dm()
         #Verify member has not already entered bounty
-        if payload.member in [r.member for r in message.reactions]:
+        if payload.member.id in self.bounty_entries:
             embed = discord.Embed(
                 title="You have already entered that bounty!", color=0x00ff00)
             embed.add_field(
@@ -307,7 +324,10 @@ class GuildPoints(commands.Cog):
         names = [f"_Bounty Tickets: {tickets}_",
                  f"_Bounty Tickets: {new_tickets}_"]
         await self.guild_currency(payload.member, names)
-        #Notify member
+        #Enter member in bounty and notify member
+        self.bounty_entries.setdefault(
+            payload.member.id,
+            self.bounty_reactions.index(payload.emoji.name))
         embed = discord.Embed(
             title="Bounty Entry Successful", color=0x00ff00)
         embed.add_field(name="Entries", value=entries)
@@ -325,11 +345,13 @@ class GuildPoints(commands.Cog):
         message = await channel.fetch_message(payload.message_id)
         direct_message = await payload.member.create_dm()
         #Get tickets used by member
-        entries = 0
+        entries = self.bounty_entries.get(payload.member.id)
+        if entries is None:
+            return
         for rxn in message.reactions:
-            if rxn.member == payload.member:
-                entries = self.bounty_reactions.index(rxn.emoji.name)+1
-                await message.remove_reaction(rxn.emoji, rxn.member)
+            if rxn.name == self.bounty_reactions[entries-1]:
+                await message.remove_reaction(rxn.emoji, payload.member)
+        await message.remove_reaction(payload.emoji, payload.member)
         #Get number of tickets member has
         tickets = 0
         for role in payload.member.roles:
@@ -350,8 +372,9 @@ class GuildPoints(commands.Cog):
     async def create_bounty(self, message):
         ''' Create a Guild Point Bounty for members to enter in
 '''
+        self.active_bounty = True
         start = datetime.datetime.now()
-        end = start+datetime.timedelta(minutes=60)
+        end = start+datetime.timedelta(minutes=1)
         embed = discord.Embed(title="New Bounty!", color=0x00ff00)
         fields = {
             "Enter this Bounty": "React to enter in this bounty",
@@ -365,27 +388,27 @@ class GuildPoints(commands.Cog):
         #Add reactions for members to enter
         for emoji in self.bounty_reactions:
             await message.add_reaction(emoji)
-        message.add_reaction(u"\u274e")
-        #Update the countdown until the bounty has ended
-        while (end-datetime.datetime.now()).total_seconds() > 0:
-            continue
+        await message.add_reaction(u"\u274c")
+        #Wait until the bounty has ended
+        await asyncio.sleep(60)
         await self.award_bounty(message)
+        self.active_bounty = False
 
     async def award_bounty(self, message):
         ''' Award a random number of Guild Points to a random member
 '''
-        channel = discord.utils.get(message.guild.channels, name="bounties")
+        channel = discord.utils.get(
+            message.guild.channels, id=self.data["bounty"])
         message = await channel.fetch_message(message.id)
-        #Get the users and number of entries per user
-        user_entries = {
-            r.member.name:self.bounty_reactions.index(r.emoji.name)+1\
-            for r in message.reactions}
-        await message.clear_reactions()
         #Randomly select a winner and the number of points won
+        await message.clear_reactions()
+        logging.info(self.bounty_entries)
         bounty = {
-            "Winner": random.choices(
-                list(user_entries),
-                list(user_entries.values()))[0],
+            "Winner": discord.utils.get(
+                message.guild.members,
+                id=random.choices(
+                    list(self.bounty_entries),
+                    list(self.bounty_entries.values()))[0]),
             "Points": random.choices(
                 list(range(1, 11)),
                 [(1/2)**n for n in range(1, 11)])[0]}
@@ -432,9 +455,9 @@ class GuildPoints(commands.Cog):
     async def parse_tiers(self, member, ptrange):
         ''' Check if a member achieved a new Guild Point tier
 '''
-        for pts in self.tiers:
+        for pts in self.data["tiers"]:
             if ptrange[0] < pts <= ptrange[1]:
-                new_tier = self.tiers[pts]
+                new_tier = self.data["tiers"][pts]
                 role = discord.utils.get(member.guild.roles, id=new_tier)
                 divider = discord.utils.get(
                     member.guild.roles, name='__________ Tiers __________')
