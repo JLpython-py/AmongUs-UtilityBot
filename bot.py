@@ -150,6 +150,11 @@ class GuildPoints(commands.Cog):
     async def on_raw_reaction_add(self, payload):
         if payload.member.bot:
             return
+        channel = self.bot.get_channel(payload.channel_id)
+        message = await channel.fetch_message(payload.message_id)
+        embed = message.embeds[0]
+        if embed.footer.text != "GuildPoints":
+            return
         if payload.emoji.name == u"\u274e":
             await self.widthdraw_entry(payload)
         elif payload.emoji.name in self.bounty_reactions:
@@ -360,6 +365,7 @@ class GuildPoints(commands.Cog):
             "Bounty End": end.strftime("%D %T")}
         for field in fields:
             embed.add_field(name=field, value=fields[field])
+        embed.set_footer(text="GuildPoints")
         channel = discord.utils.get(message.guild.channels, name=self.channel)
         message = await channel.send(embed=embed)
         #Add reactions for members to enter
