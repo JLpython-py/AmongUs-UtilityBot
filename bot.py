@@ -158,9 +158,9 @@ class GuildPoints(commands.Cog):
         if message.author.bot:
             return
         members = [m for m in message.guild.members if not m.bot]
-        if message.author == random.choice(message.guild.members):
+        if random.randint(1, 25) == random.randint(1, 25):
             await self.award_tickets(message)
-            if message.channel == random.choice(message.guild.channels):
+            if random.choice(message.guild.members).id == message.author.id:
                 await self.create_bounty(message)
 
     @commands.Cog.listener()
